@@ -17,10 +17,11 @@ It ranks seven Port Phillip Bay beaches by a 0–100 score built from Bureau of 
 |---|---|
 | BOM data fetcher | Done, live |
 | Scoring + 15 unit tests | Done |
-| UI (ranked cards, details, compass, dark mode, stale banner) | Done; **layout not yet visually verified on a phone by an agent** |
+| UI (ranked cards, details, compass, dark mode, stale banner) | Done; **layout never visually verified by an agent: do a phone check** |
 | CI/CD (fetch + build + deploy every 30 min, GitHub Pages) | Done, confirmed working |
 | Water quality (EPA) | **Not available.** EPA has no live Beach Report API. UI links to EPA's Beach Report instead. Score treats it as unknown. |
-| BOM warnings (strong wind / thunderstorm) | **Not wired.** No feed identified yet. `warnings` is always `null`/empty. |
+| BOM warnings (strong wind / thunderstorm) | Wired (Victorian warnings RSS `IDZ00059.warnings_vic.xml`). **Item titles unverified**: the feed was empty when built, so the relevance filter is based on assumed wording. |
+| Daylight rule, thunderstorm flag, per-beach low-tide height | Done (Phase 1) |
 | Time-ahead view (+3h / tomorrow) | Not built |
 | PWA / offline install | Not built |
 
@@ -43,10 +44,15 @@ Browser loads index.html + data.json (relative URL), scores each beach client-si
 ```
 data/beaches.json        Beach config (single source of truth for beaches)
 fetcher/fetch.ts         BOM fetcher -> web/public/data.json (run: npm run fetch)
+fetcher/tides.ts         Parses BOM's tide table HTML
+fetcher/warnings.ts      Parses/filters the BOM Victorian warnings RSS
 web/index.html           Page shell
 web/src/main.ts          UI rendering, data loading, condition assembly
 web/src/score.ts         Scoring engine + CONFIG (all tunable numbers)
-web/src/score.test.ts    Unit tests (npm test)
+web/src/conditions.ts    Data + beach + time -> scoring inputs (tide verdict, daylight, storm, warnings); also the Data/Beach/Station types
+web/src/tide.ts          Low-tide window logic (lowTideState, nextEvent)
+web/src/sun.ts           Sunrise/sunset maths
+web/src/*.test.ts        Unit tests (npm test); fetcher/*.test.ts too
 web/src/style.css        Styles (CSS variables, auto dark mode)
 vite.config.ts           root: web, base: ./, outDir: ../dist
 .github/workflows/deploy.yml   Scheduled fetch + deploy
@@ -77,6 +83,8 @@ All requests send `User-Agent: where-to-swim personal-use app`. **Use an honest 
 | UV, rain chance | `https://www.bom.gov.au/fwo/IDV10450.xml` | `VIC_ME001` period 0 `uv_alert` ("UV Index predicted to reach 9 [Very High]"); `VIC_PT042` period 0 `probability_of_precipitation` ("30%"). Display only, not scored. |
 | Tides | `https://www.bom.gov.au/australia/tides/scripts/getTidesTable.php?type=tide&aac=VIC_TP003&date=YYYY-MM-DD&days=4&region=VIC&offset=false&offsetName=&tz=Australia/Melbourne&tz_js=Australia/Melbourne` | **Undocumented endpoint used by BOM's own tides page**; may change without notice. Returns HTML; `fetcher/tides.ts` (`parseTideTable`) extracts every high/low from `data-time-utc` and the height cell. Fetched from yesterday for 4 days. Site `VIC_TP003` = Melbourne (Williamstown), the primary Port Phillip station (`VIC_TP027` St Kilda is a secondary). Williamstown has **two lows a day of different depth** (about 0.5 m and about 0.22 m). A simpler endpoint `getNextTides.php?aac=VIC_TP003&offset=false&tz=...` gives only the next high/low. |
 
+| Warnings | `https://www.bom.gov.au/fwo/IDZ00059.warnings_vic.xml` | RSS, updates about every 10 min (`ttl` 10). `fetcher/warnings.ts` keeps swimming-relevant hazard titles (wind, gale, storm, thunderstorm, waves, surf, tide, tsunami, cyclone, hail, tornado) and drops distant Victorian regions. **Titles of real warnings are unverified** (the feed was empty). `warnings: []` = none active; `null` = feed unreadable. There is no marine-specific variant (`warnings_marine_vic` is 404). |
+
 Equivalent FTP paths exist (`ftp://ftp.bom.gov.au/anon/gen/fwo/IDV10460.xml`) but HTTPS is used because it needs no FTP client.
 
 BOM terms: free for personal / in-organisation use; no redistribution or commercial use without a Registered User agreement. The site is public-but-unlisted and personal; do not market it or add ads. Always keep the attribution string in `data.json`. BOM gives no availability guarantee.
@@ -86,8 +94,11 @@ Update cadence: observations ~every 30 minutes (published at :00/:30), forecasts
 ### EPA water quality — why it is missing
 EPA Victoria's developer portal (portal.api.epa.vic.gov.au) offers only the Environment Monitoring API (air quality). A Beach Report / Yarra Watch API is described by EPA as "in development" with no date. The Beach Report page is a JavaScript app with no documented feed; only a historical enterococci dataset exists on data.vic.gov.au. The owner decided **not** to scrape or estimate. Each beach links to `https://www.epa.vic.gov.au/for-community/summer-water-quality/beach-report`. If EPA ships an API: add `EPA_API_KEY` as a GitHub Actions secret, read `process.env.EPA_API_KEY` in the fetcher, fill `waterQuality` (shape below). Scoring and UI already handle it. Never put the key in the repo or in `data.json`.
 
-### BOM warnings — open item
-No warnings product was found among the 54 Victorian `IDV*.xml` FTP products. Candidates to investigate: BOM warnings RSS/summary pages, or Victoria marine/strong-wind warning products under other prefixes (e.g. `IDZ*`, `IDV21*`/`IDV36*`). Unverified. When found, populate `warnings: string[]` in `data.json`; scoring already caps at 25 if non-empty.
+### BOM warnings
+No warnings product exists among the `IDV*.xml` FTP files; the usable feed is the RSS at `/fwo/IDZ00059.warnings_vic.xml` (see table). **Verify the parser the first time a real warning is issued**: open the feed, compare item titles with `fetcher/warnings.test.ts`, and adjust `HAZARD` / `OTHER_REGION` / `OUR_AREA` in `fetcher/warnings.ts` if needed.
+
+### BOM tide offsets
+`https://www.bom.gov.au/australia/tides/tide_offset_sites.json` is empty (no offset sites), so no official offset is applied for Black Rock / Beaumaris. Tide times are Williamstown's.
 
 ## 5. `data.json` schema (produced by the fetcher)
 
@@ -96,7 +107,8 @@ No warnings product was found among the 54 Victorian `IDV*.xml` FTP products. Ca
   "fetchedAt": "ISO-8601 UTC",
   "stations": {
     "95864": { "name": "...", "observedAt": "ISO UTC", "windDirText": "NNW", "windDirDeg": 337.5,
-               "windKmh": 19, "gustKmh": 33, "airTemp": null, "rainSince9am": null },
+               "windKmh": 19, "gustKmh": 33, "airTemp": null, "rainSince9am": null,
+               "weather": null /* BOM present-weather text, e.g. "Thunderstorm"; null if "-" */ },
     "95936": { "...": "same shape, airTemp and rainSince9am populated" }
   },
   "weatherStation": "95936",                    // which station supplies temp/rain
@@ -105,7 +117,7 @@ No warnings product was found among the 54 Victorian `IDV*.xml` FTP products. Ca
   "tide": { "site": "Melbourne (Williamstown)",
             "events": [ { "type": "high"|"low", "time": "ISO UTC", "height": 0.85 }, ... ] } | null,
             // ~yesterday to +2 days, sorted. The page works out "next high/low" and "is it low tide now" itself.
-  "warnings": null,                             // string[] when wired
+  "warnings": [],                               // string[] of relevant warning titles; null if the feed failed
   "waterQuality": null,                         // { [epaSite]: "Good"|"Fair"|"Poor" } when wired
   "errors": [],                                 // per-source failure messages
   "attribution": "Contains Bureau of Meteorology data. Personal use only."
@@ -116,7 +128,7 @@ Failure policy: each source is fetched independently (`safe()` in `fetch.ts`); a
 
 ## 6. Beach config (`data/beaches.json`)
 
-Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the beach looks out over the water**), `lat`, `lon` (approximate, display only), `windStation` (BOM station id), `epaSite` (EPA's name for the beach, or `null` if EPA doesn't cover it; for future use), optional `needsLowTide: true`, optional `note`.
+Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the beach looks out over the water**), `lat`, `lon` (approximate, display only), `windStation` (BOM station id), `epaSite` (EPA's name for the beach, or `null` if EPA doesn't cover it; for future use), optional `needsLowTide: true`, optional `maxLowTideM` (only lows at or below this height, in metres, count as low), optional `note`.
 
 | Beach | faces | Low tide only |
 |---|---|---|
@@ -152,12 +164,15 @@ All constants are in the exported `CONFIG`. Change numbers there and update test
 
 4. **Caps** (final score = min(sum, lowest applicable cap)):
    - Poor water quality → 35
+   - **After dark** → 20 (daylight = sunrise − 30 min to sunset + 30 min, `CONFIG.twilightMin`; computed per beach from lat/lon in `web/src/sun.ts`; label e.g. "after dark, sunrise 6:03am")
+   - **Thunderstorm** mentioned in the bay forecast or current obs weather (`mentionsThunderstorm`) → 55. The bay text covers the whole day, so this is a deliberately soft cap
    - Any active warning → 25
    - Gusts > 45 km/h → 40
    - Rain since 9am ≥ 10 mm → 55
    - Wind ≥ 25 km/h and `onshore < −0.5` (strong offshore: calm water but swimmers drift out) → 55
    - **Low-tide-only beaches** (`needsLowTide`) when it is not low tide → 35. "Low tide" = within `CONFIG.lowTideWindowHours` (1.5 h) of any predicted low (`web/src/tide.ts`, `lowTideState`). If the tide data doesn't cover "now" the state is unknown: no cap, and "tide" is listed as missing. The reason line then reads "needs low tide (next low 10:50pm, 0.22 m)". Other beaches ignore tide.
-   - Known limitation: Williamstown has two lows a day (about 0.5 m and about 0.22 m); both currently count as "low". A per-beach maximum low height (e.g. ≤ 0.4 m) may suit marine sanctuaries better. Tide times are Williamstown's; Black Rock and Beaumaris differ by a short offset that is not applied.
+   - Williamstown has two lows a day (about 0.5 m and about 0.22 m). Beaches with `maxLowTideM` (currently **0.5 for the three sanctuaries, so both daily lows count**) only count lows at or below that height. If it is later set lower (e.g. 0.4), only the deep low counts, which often falls at night, so those beaches could go many days with no daylight qualifying low. Tune `maxLowTideM` per beach in `data/beaches.json`. **Revisit with real-world feedback** (see §12). Tide times are Williamstown's; no official offset is available.
+   - **Today's best case is ~78 ("Good")**: with water quality unknown (15/25) and the usual "Below 1 metre" bay sea (about 13/25), no beach can currently reach Great in real conditions. The owner chose to **leave this as is for now** (see §12).
 
 5. **Labels:** 80–100 Great, 60–79 Good, 40–59 Fair, 0–39 Poor.
 6. **Sea text parsing** (`parseSeaHeight`): numbers in BOM prose; "below/less than/under N" → 0.6×N; one number → that value; several → midpoint of low and the maximum. "Below 1 metre." → 0.6 m. The forecast is bay-wide and coarse; "Below 1 metre" is a very common value, so sea points are usually ~13.
@@ -203,7 +218,7 @@ Worked examples (also tests): calm east 9 km/h, 0.2 m, Good water, 24 °C → 98
 ## 11. Roadmap / open items (suggested order)
 
 1. Visual QA on a real phone (layout, compass orientation, dark mode, tap targets); fix issues.
-2. Find a BOM warnings feed and wire `warnings`.
+2. ~~Warnings feed~~ done; verify against a real warning (see §4).
 3. Time switcher (+3 h / +6 h / tomorrow) — would use forecast periods in `IDV10460` and BOM's wind forecast; needs a way to turn forecast prose into numbers.
 4. 24–72 h rainfall from BOM as an optional *clearly-labelled estimate* for water quality (owner declined for now; ask before building).
 5. EPA Beach Report API when released (see §4).
@@ -212,7 +227,23 @@ Worked examples (also tests): calm east 9 km/h, 0.2 m, Good water, 24 °C → 98
 8. Add beaches (Brighton etc.) via `beaches.json`.
 9. Tune `CONFIG` from the owner's real-world feedback.
 
-## 12. Decision log
+## 12. Revisit later, once humans have used it
+The owner wants to tune these using real-world experience ("it said X but it was actually Y"). Do not change them without that feedback. Keep a short log of each disagreement (beach, time, app verdict, what it was really like) and use it to adjust `CONFIG` in `web/src/score.ts` and `data/beaches.json`.
+
+| Open point | Current setting | Options when revisiting |
+|---|---|---|
+| **"Great" is unreachable in practice** (decided 2026-11-10: leave as is) | Max realistic score about 78 ("Good") because water quality is unknown (15/25) and the bay sea forecast is coarse (about 13/25) | (a) keep; (b) score only the known components, rescaled to 100, labelled "water quality not included"; (c) lower the Great threshold from 80; (d) revisit once EPA data or local chop estimates exist |
+| **Which lows count for the sanctuaries** (decided 2026-11-10: both lows) | `maxLowTideM: 0.5` for Jawbone, Half Moon Bay, Ricketts Point | Tighten to 0.4 so only the deep low (about 0.22 m) counts; or set per beach from experience; or add tide offsets/heights per site |
+| Low-tide window | `lowTideWindowHours: 1.5` either side of a low | Widen/narrow per beach; some sanctuaries may be fine for longer |
+| Score thresholds and weights | Great 80 / Good 60 / Fair 40; wind 40, sea 25, water 25, comfort 10 | Re-weight from feedback |
+| Onshore wind factor | 0.4 (offshore ×0.6, onshore ×1.4) | Tune per beach exposure |
+| Sea state | Bay-wide BOM forecast text | Local chop estimate from wind and open-water distance (roadmap Phase 2) |
+| Wind station | St Kilda Harbour (95864) for every beach | Verified closer stations for the western and southern beaches |
+| Beach bearings and coordinates | Estimated from coastline shape | Check against maps/lifesavers; Jawbone especially |
+| Warnings parser | Filter written from assumed titles | Verify when BOM issues a real warning |
+| Daylight margin | 30 min twilight allowance | Reduce to 0 if it feels too generous |
+
+## 13. Decision log
 
 | Decision | Why |
 |---|---|
@@ -224,3 +255,6 @@ Worked examples (also tests): calm east 9 km/h, 0.2 m, Good water, 24 °C → 98
 | EPA: link only, no scraping/estimate | No official API; owner's choice; avoids unreliable proxies |
 | Fail CI if wind or bay forecast missing | Keep last good deployment live |
 | `textContent` only | Fetched strings can't inject markup |
+| Daylight cap 20, storm cap 55, wrong-tide cap 35 | Safety rules override a good-looking weather score |
+| No tide offset for Black Rock/Beaumaris | BOM's offsets file is empty; don't invent one |
+| Leave "Great" unreachable; sanctuary lows ≤ 0.5 m (both lows) | Owner decision 2026-11-10: gather human experience first (§12) |

@@ -26,6 +26,24 @@ describe("lowTideState", () => {
   });
 });
 
+describe("lowTideState with a maximum low height", () => {
+  it("ignores the shallow 0.5 m low when only lows <= 0.4 m count", () => {
+    // Exactly at the 0.5 m low: normally 'in window', but not for a 0.4 m limit.
+    expect(lowTideState(events, t("2026-11-09T23:54:00Z"), 1.5)?.inWindow).toBe(true);
+    expect(lowTideState(events, t("2026-11-10T00:00:00Z"), 1.5, 0.4)?.inWindow).toBe(false);
+  });
+  it("still counts the deep 0.22 m low", () => {
+    expect(lowTideState(events, t("2026-11-10T11:50:00Z"), 1.5, 0.4)?.inWindow).toBe(true);
+  });
+  it("is unknown when no low qualifies", () => {
+    expect(lowTideState(events, t("2026-11-10T06:00:00Z"), 1.5, 0.1)).toBeNull();
+  });
+  it("nextEvent skips shallow lows when a limit is given", () => {
+    expect(nextEvent(events, "low", t("2026-11-09T22:00:00Z"))?.height).toBe(0.5);
+    expect(nextEvent(events, "low", t("2026-11-09T22:00:00Z"), 0.4)?.height).toBe(0.22);
+  });
+});
+
 describe("nextEvent", () => {
   it("finds the next high and low after now", () => {
     expect(nextEvent(events, "high", t("2026-11-10T06:00:00Z"))?.time).toBe("2026-11-11T05:30:00Z");

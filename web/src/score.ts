@@ -4,8 +4,9 @@ export const CONFIG = {
   onshoreFactor: 0.4, // effective wind = speed * (1 + factor * onshore); offshore=-1 -> 0.6x, onshore=+1 -> 1.4x
   windPoints: [[8, 40], [20, 20], [30, 0]] as [number, number][], // [effective km/h, points]
   seaPoints: [[0.2, 25], [0.5, 15], [1.0, 5], [1.5, 0]] as [number, number][], // [metres, points]
-  caps: { poorWater: 35, warning: 25, gust: 40, heavyRain: 55, strongOffshore: 55, wrongTide: 35 },
+  caps: { poorWater: 35, warning: 25, gust: 40, heavyRain: 55, strongOffshore: 55, wrongTide: 35, dark: 20, storm: 55 },
   lowTideWindowHours: 1.5, // "low tide" = within this many hours of a predicted low
+  twilightMin: 30, // still counts as daylight this many minutes before sunrise / after sunset
   gustCapKmh: 45,
   heavyRainMm: 10,
   strongOffshoreKmh: 25,
@@ -31,6 +32,15 @@ export interface Conditions {
   needsLowTide?: boolean;
   /** Tide state now; null = unknown. `label` is shown in the cap reason, e.g. "next low 5:40pm". */
   lowTide?: { inWindow: boolean; label: string } | null;
+  /** Daylight at this beach at the time being scored; `label` explains it (e.g. "after dark, sunrise 6:06am"). */
+  daylight?: { isDay: boolean; label: string } | null;
+  /** Thunderstorms mentioned in the forecast or current weather. */
+  storm?: boolean;
+}
+
+/** True if BOM weather text mentions thunderstorms ("thunderstorm", "thunder", "storms"). */
+export function mentionsThunderstorm(text: string | null | undefined): boolean {
+  return !!text && /thunder/i.test(text);
 }
 
 export interface Result {
@@ -128,6 +138,8 @@ export function scoreBeach(beachFacesDeg: number, c: Conditions): Result {
   // Rain / warnings
   if (c.rainMm != null && c.rainMm >= CONFIG.heavyRainMm) caps.push({ max: CONFIG.caps.heavyRain, why: `heavy rain (${c.rainMm} mm)` });
   if (c.warnings.length > 0) caps.push({ max: CONFIG.caps.warning, why: `warning: ${c.warnings[0]}` });
+  if (c.daylight && !c.daylight.isDay) caps.push({ max: CONFIG.caps.dark, why: c.daylight.label });
+  if (c.storm) caps.push({ max: CONFIG.caps.storm, why: "thunderstorms possible" });
   if (c.needsLowTide) {
     if (c.lowTide == null) unknown.push("tide");
     else if (!c.lowTide.inWindow) caps.push({ max: CONFIG.caps.wrongTide, why: `needs low tide (${c.lowTide.label})` });

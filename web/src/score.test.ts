@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { labelFor, onshoreComponent, parseSeaHeight, scoreBeach, type Conditions } from "./score.ts";
+import { labelFor, mentionsThunderstorm, onshoreComponent, parseSeaHeight, scoreBeach, type Conditions } from "./score.ts";
 
 const base: Conditions = {
   windFromDeg: 90, // easterly
@@ -99,6 +99,25 @@ describe("scoreBeach (worked examples)", () => {
   it("tide is ignored for ordinary beaches", () => {
     const r = scoreBeach(FACES_WEST, { ...base, lowTide: { inWindow: false, label: "x" } });
     expect(r.score).toBeGreaterThanOrEqual(90);
+  });
+
+  it("after dark is capped at 20 and explains why", () => {
+    const r = scoreBeach(FACES_WEST, { ...base, daylight: { isDay: false, label: "after dark, sunrise 6:06am" } });
+    expect(r.score).toBe(20);
+    expect(r.label).toBe("Poor");
+    expect(r.reason).toMatch(/after dark/);
+  });
+
+  it("daylight does not change the score", () => {
+    const r = scoreBeach(FACES_WEST, { ...base, daylight: { isDay: true, label: "sunset 8:04pm" } });
+    expect(r.score).toBeGreaterThanOrEqual(90);
+  });
+
+  it("thunderstorms possible caps at 55; mentionsThunderstorm reads BOM phrasing", () => {
+    expect(scoreBeach(FACES_WEST, { ...base, storm: true }).score).toBe(55);
+    expect(mentionsThunderstorm("Partly cloudy. The chance of a thunderstorm in the afternoon.")).toBe(true);
+    expect(mentionsThunderstorm("Partly cloudy. 50% chance of showers.")).toBe(false);
+    expect(mentionsThunderstorm(null)).toBe(false);
   });
 
   it("different beach orientations change the result for the same wind", () => {

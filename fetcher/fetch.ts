@@ -5,6 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseTideTable } from "./tides.ts";
+import { relevantWarnings } from "./warnings.ts";
 
 const UA = "where-to-swim personal-use app";
 const BOM = "https://www.bom.gov.au";
@@ -44,7 +45,13 @@ async function observation(station: string) {
     gustKmh: num(r.gust_kmh),
     airTemp: num(r.air_temp),
     rainSince9am: num(r.rain_trace),
+    weather: typeof r.weather === "string" && r.weather !== "-" && r.weather.trim() ? (r.weather as string) : null,
   };
+}
+
+// Active Victorian warnings (RSS). Returns titles of swimming-relevant ones; [] = none active.
+async function warnings() {
+  return relevantWarnings(await get(`${BOM}/fwo/IDZ00059.warnings_vic.xml`));
 }
 
 const xml = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", isArray: (n) => ["area", "forecast-period", "text"].includes(n) });
@@ -102,12 +109,13 @@ async function safe<T>(label: string, fn: () => Promise<T>, errors: string[]): P
 
 async function main() {
   const errors: string[] = [];
-  const [wind, weather, bay, melb, tide] = await Promise.all([
+  const [wind, weather, bay, melb, tide, warn] = await Promise.all([
     safe("wind obs", () => observation(WIND_STATION), errors),
     safe("weather obs", () => observation(WEATHER_STATION), errors),
     safe("bay forecast", bayForecast, errors),
     safe("melbourne forecast", melbourneForecast, errors),
     safe("tides", tides, errors),
+    safe("warnings", warnings, errors),
   ]);
 
   const data = {
@@ -117,7 +125,7 @@ async function main() {
     bay,
     melbourne: melb,
     tide,
-    warnings: null, // no BOM warnings feed wired up yet
+    warnings: warn, // null = feed unreadable; [] = none active (BOM Victoria warnings RSS, IDZ00059)
     waterQuality: null, // EPA Beach Report not wired up yet (needs API key)
     errors,
     attribution: "Contains Bureau of Meteorology data. Personal use only.",

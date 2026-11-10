@@ -1,36 +1,15 @@
 import "./style.css";
 import rawBeaches from "../../data/beaches.json";
-import { CONFIG, parseSeaHeight, scoreBeach, type Conditions, type Result } from "./score.ts";
-import { lowTideState, nextEvent, type TideEvent } from "./tide.ts";
+import { scoreBeach, type Result } from "./score.ts";
+import { conditionsFor, daylightFor, fmtTime, type Beach, type Data, type Station } from "./conditions.ts";
+import { nextEvent } from "./tide.ts";
+import type { Conditions } from "./score.ts";
 
-interface Beach {
-  id: string; name: string; faces: number; lat: number; lon: number;
-  windStation: string; epaSite: string | null; needsLowTide?: boolean; note?: string;
-}
 const beaches = rawBeaches as Beach[];
-
-interface Station {
-  name: string; observedAt: string; windDirText: string | null; windDirDeg: number | null;
-  windKmh: number | null; gustKmh: number | null; airTemp: number | null; rainSince9am: number | null;
-}
-interface Data {
-  fetchedAt: string;
-  stations: Record<string, Station | null>;
-  weatherStation: string;
-  bay: { winds: string | null; seas: string | null; weather: string | null; issuedAt: string } | null;
-  melbourne: { uvText: string | null; uvIndex: number | null; rainChancePct: number | null } | null;
-  tide: { site: string; events: TideEvent[] } | null;
-  warnings: string[] | null;
-  waterQuality: Record<string, "Good" | "Fair" | "Poor"> | null;
-  errors: string[];
-  attribution: string;
-}
 
 const STALE_MIN = 60;
 const app = document.getElementById("app")!;
-const tz = "Australia/Melbourne";
 const EPA_BEACH_REPORT_URL = "https://www.epa.vic.gov.au/for-community/summer-water-quality/beach-report";
-const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", timeZone: tz });
 const ageMin = (iso: string) => (Date.now() - new Date(iso).getTime()) / 60_000;
 
 /** Build a DOM element; text goes in via textContent so fetched strings can't inject markup. */
@@ -40,33 +19,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: { class?: stri
   if (props.text !== undefined) e.textContent = props.text;
   for (const k of kids) e.append(k);
   return e;
-}
-
-/** Short tide description for a low-tide-only beach, e.g. "low tide now" or "next low 5:40pm". */
-function lowTideFor(d: Data): { inWindow: boolean; label: string } | null {
-  const now = Date.now();
-  const state = lowTideState(d.tide?.events, now, CONFIG.lowTideWindowHours);
-  if (!state) return null;
-  if (state.inWindow) return { inWindow: true, label: `low tide ${fmtTime(state.nearest.time)}, ${state.nearest.height} m` };
-  const next = nextEvent(d.tide!.events, "low", now);
-  return { inWindow: false, label: next ? `next low ${fmtTime(next.time)}, ${next.height} m` : "tide is not low" };
-}
-
-function conditionsFor(beach: Beach, d: Data): Conditions {
-  const wind = d.stations[beach.windStation];
-  const wx = d.stations[d.weatherStation];
-  return {
-    needsLowTide: !!beach.needsLowTide,
-    lowTide: beach.needsLowTide ? lowTideFor(d) : undefined,
-    windFromDeg: wind?.windDirDeg ?? null,
-    windKmh: wind?.windKmh ?? null,
-    gustKmh: wind?.gustKmh ?? null,
-    seaHeightM: parseSeaHeight(d.bay?.seas),
-    waterQuality: (beach.epaSite && d.waterQuality?.[beach.epaSite]) || null,
-    warnings: d.warnings ?? [],
-    airTempC: wx?.airTemp ?? null,
-    rainMm: wx?.rainSince9am ?? null,
-  };
 }
 
 function compass(beach: Beach, windFromDeg: number | null): SVGElement {
@@ -127,7 +79,9 @@ function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HT
   row(dl, "Sea (bay)", d.bay?.seas ?? null);
   if (c.waterQuality) row(dl, "Water quality", c.waterQuality);
   else dl.append(el("dt", { text: "Water quality" }), el("dd", {}, epaLink()));
-  row(dl, "Warnings", c.warnings.length ? c.warnings.join("; ") : "none known (BOM warnings not connected)");
+  row(dl, "Warnings", d.warnings === null ? null : d.warnings.length ? d.warnings.join("; ") : "none active (BOM Victoria)", "unavailable (couldn't read BOM feed)");
+  if (c.daylight) row(dl, "Daylight", c.daylight.label);
+  if (c.storm) row(dl, "Weather", "thunderstorms possible");
   if (beach.needsLowTide) row(dl, "Tide (needs low)", c.lowTide ? `${c.lowTide.inWindow ? "OK — " : "wait — "}${c.lowTide.label}` : null);
   row(dl, "Air temp", c.airTempC != null ? `${c.airTempC}°C` : null);
   row(dl, "Rain since 9am", c.rainMm != null ? `${c.rainMm} mm` : null);
@@ -162,13 +116,15 @@ function render(d: Data) {
     const parts = [hi && `high ${hi.height} m ${fmtTime(hi.time)}`, lo && `low ${lo.height} m ${fmtTime(lo.time)}`].filter(Boolean);
     if (parts.length) bits.push(`Next tide: ${parts.join(", ")}`);
   }
+  const sun = daylightFor(beaches[0], Date.now());
+  if (sun) bits.push(sun.label);
   if (d.melbourne?.uvIndex != null) bits.push(`UV ${d.melbourne.uvIndex}`);
   if (d.melbourne?.rainChancePct != null) bits.push(`Rain chance ${d.melbourne.rainChancePct}%`);
   if (bits.length) out.push(el("div", { class: "summary" }, ...bits.map((t) => el("span", { text: t }))));
 
   out.push(el("div", { class: "section-title", text: "Best right now" }));
   ranked.forEach(({ b, c, r }, i) => out.push(card(b, r, c, d, i + 1)));
-  const note = el("footer", { text: `${d.attribution} Scores are a guide and don't include water quality or warnings — check the ` });
+  const note = el("footer", { text: `${d.attribution} Scores are a guide and don't include water quality — check the ` });
   const link = epaLink();
   link.textContent = "EPA Beach Report";
   note.append(link, " and the flags and lifesavers before you swim.");
