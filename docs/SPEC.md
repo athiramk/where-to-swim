@@ -75,7 +75,7 @@ All requests send `User-Agent: where-to-swim personal-use app`. **Use an honest 
 | Air temp, rain | Same URL pattern, station `95936` (Melbourne Olympic Park) | `air_temp`; `rain_trace` is **rain since 9am (mm)**, not 24 h. |
 | Port Phillip marine forecast | `https://www.bom.gov.au/fwo/IDV10460.xml` | Area `VIC_MW005` "Port Phillip", `forecast-period index=0` (today). Text types `forecast_winds` (knots, prose), `forecast_seas` (e.g. "Below 1 metre."), `forecast_weather`. One value for the whole bay. |
 | UV, rain chance | `https://www.bom.gov.au/fwo/IDV10450.xml` | `VIC_ME001` period 0 `uv_alert` ("UV Index predicted to reach 9 [Very High]"); `VIC_PT042` period 0 `probability_of_precipitation` ("30%"). Display only, not scored. |
-| Tides | `https://www.bom.gov.au/australia/tides/scripts/getNextTides.php?aac=VIC_TP003&offset=false&tz=Australia/Melbourne` | **Undocumented endpoint used by BOM's own tides page**; may change without notice. Returns next high/low as Unix seconds + height (m). Site `VIC_TP003` = Melbourne (Williamstown), the primary Port Phillip station. `VIC_TP027` = St Kilda (secondary). |
+| Tides | `https://www.bom.gov.au/australia/tides/scripts/getTidesTable.php?type=tide&aac=VIC_TP003&date=YYYY-MM-DD&days=4&region=VIC&offset=false&offsetName=&tz=Australia/Melbourne&tz_js=Australia/Melbourne` | **Undocumented endpoint used by BOM's own tides page**; may change without notice. Returns HTML; `fetcher/tides.ts` (`parseTideTable`) extracts every high/low from `data-time-utc` and the height cell. Fetched from yesterday for 4 days. Site `VIC_TP003` = Melbourne (Williamstown), the primary Port Phillip station (`VIC_TP027` St Kilda is a secondary). Williamstown has **two lows a day of different depth** (about 0.5 m and about 0.22 m). A simpler endpoint `getNextTides.php?aac=VIC_TP003&offset=false&tz=...` gives only the next high/low. |
 
 Equivalent FTP paths exist (`ftp://ftp.bom.gov.au/anon/gen/fwo/IDV10460.xml`) but HTTPS is used because it needs no FTP client.
 
@@ -102,8 +102,9 @@ No warnings product was found among the 54 Victorian `IDV*.xml` FTP products. Ca
   "weatherStation": "95936",                    // which station supplies temp/rain
   "bay": { "winds": "...", "seas": "Below 1 metre.", "weather": "...", "issuedAt": "ISO UTC" } | null,
   "melbourne": { "uvText": "...", "uvIndex": 9, "rainChancePct": 30 } | null,
-  "tide": { "site": "Melbourne (Williamstown)", "nextHigh": { "time": "ISO", "height": 0.85 },
-            "nextLow": { "time": "ISO", "height": 0.22 } } | null,
+  "tide": { "site": "Melbourne (Williamstown)",
+            "events": [ { "type": "high"|"low", "time": "ISO UTC", "height": 0.85 }, ... ] } | null,
+            // ~yesterday to +2 days, sorted. The page works out "next high/low" and "is it low tide now" itself.
   "warnings": null,                             // string[] when wired
   "waterQuality": null,                         // { [epaSite]: "Good"|"Fair"|"Poor" } when wired
   "errors": [],                                 // per-source failure messages
@@ -115,19 +116,22 @@ Failure policy: each source is fetched independently (`safe()` in `fetch.ts`); a
 
 ## 6. Beach config (`data/beaches.json`)
 
-Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the beach looks out over the water**), `lat`, `lon` (approximate, display only), `windStation` (BOM station id), `epaSite` (EPA's name for the beach, for future use).
+Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the beach looks out over the water**), `lat`, `lon` (approximate, display only), `windStation` (BOM station id), `epaSite` (EPA's name for the beach, or `null` if EPA doesn't cover it; for future use), optional `needsLowTide: true`, optional `note`.
 
-| Beach | faces |
-|---|---|
-| Sandridge | 280 |
-| Port Melbourne | 275 |
-| South Melbourne | 265 |
-| Middle Park | 260 |
-| Albert Park | 255 |
-| St Kilda | 255 |
-| Elwood | 250 |
+| Beach | faces | Low tide only |
+|---|---|---|
+| Sandridge | 280 | |
+| Port Melbourne | 275 | |
+| South Melbourne | 265 | |
+| Middle Park | 260 | |
+| Albert Park | 255 | |
+| St Kilda | 255 | |
+| Elwood | 250 | |
+| Jawbone Marine Sanctuary (Williamstown, west shore) | 165 | yes |
+| Half Moon Bay (Black Rock) | 250 | yes |
+| Ricketts Point Marine Sanctuary (Beaumaris) | 255 | yes |
 
-**Bearings and coordinates are estimates from coastline shape**, not surveyed. All beaches currently share wind station 95864. To add a beach, add one JSON entry (candidates: Brighton, Williamstown, Altona — note the Williamstown/Altona shore faces a different direction, so check orientation). No code change needed.
+**Bearings and coordinates are estimates from coastline shape**, not surveyed. Jawbone is on the **west** shore and faces roughly south-east, so the usual "easterly = offshore" intuition does not apply there. All beaches currently use wind station 95864 (St Kilda Harbour), which is a stand-in for the three south/west additions: a closer verified station would be better. To add a beach, add one JSON entry (candidates: Brighton, Altona). No code change needed. `needsLowTide` beaches were requested by the owner as "worth visiting only at low tide and in good weather" (Flinders was considered and dropped: it is on Western Port, outside this data).
 
 ## 7. Scoring specification (`web/src/score.ts`)
 
@@ -152,6 +156,8 @@ All constants are in the exported `CONFIG`. Change numbers there and update test
    - Gusts > 45 km/h → 40
    - Rain since 9am ≥ 10 mm → 55
    - Wind ≥ 25 km/h and `onshore < −0.5` (strong offshore: calm water but swimmers drift out) → 55
+   - **Low-tide-only beaches** (`needsLowTide`) when it is not low tide → 35. "Low tide" = within `CONFIG.lowTideWindowHours` (1.5 h) of any predicted low (`web/src/tide.ts`, `lowTideState`). If the tide data doesn't cover "now" the state is unknown: no cap, and "tide" is listed as missing. The reason line then reads "needs low tide (next low 10:50pm, 0.22 m)". Other beaches ignore tide.
+   - Known limitation: Williamstown has two lows a day (about 0.5 m and about 0.22 m); both currently count as "low". A per-beach maximum low height (e.g. ≤ 0.4 m) may suit marine sanctuaries better. Tide times are Williamstown's; Black Rock and Beaumaris differ by a short offset that is not applied.
 
 5. **Labels:** 80–100 Great, 60–79 Good, 40–59 Fair, 0–39 Poor.
 6. **Sea text parsing** (`parseSeaHeight`): numbers in BOM prose; "below/less than/under N" → 0.6×N; one number → that value; several → midpoint of low and the maximum. "Below 1 metre." → 0.6 m. The forecast is bay-wide and coarse; "Below 1 metre" is a very common value, so sea points are usually ~13.
@@ -190,7 +196,8 @@ Worked examples (also tests): calm east 9 km/h, 0.2 m, Good water, 24 °C → 98
 - `rain_trace` is rain *since 9am*, not the last 24 h. The "heavy rain" cap uses it; a true 24–72 h rain total would be a better water-quality proxy and is a possible improvement.
 - `IDV10200` is the *open-coast* marine forecast, not the bay. Use `IDV10460` for Port Phillip.
 - Time zone: all times in `data.json` are UTC ISO; the UI formats to Australia/Melbourne.
-- The tides endpoint is undocumented and may break; the fetcher degrades gracefully (`tide: null`).
+- The tides endpoint is undocumented and may break; the fetcher degrades gracefully (`tide: null`, and low-tide beaches show tide as unknown).
+- Vitest also runs `fetcher/**/*.test.ts` (see `vite.config.ts`).
 - Never log or commit secrets. Do not put personal details (name, email, domain) in this public repo.
 
 ## 11. Roadmap / open items (suggested order)

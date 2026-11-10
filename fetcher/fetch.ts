@@ -4,6 +4,7 @@ import { XMLParser } from "fast-xml-parser";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseTideTable } from "./tides.ts";
 
 const UA = "where-to-swim personal-use app";
 const BOM = "https://www.bom.gov.au";
@@ -74,15 +75,18 @@ async function melbourneForecast() {
   return { uvText: metro.uv_alert ?? null, uvIndex: uvMatch ? Number(uvMatch[1]) : null, rainChancePct: rain ? Number(rain[1]) : null };
 }
 
+// All highs/lows from yesterday to +2 days (Melbourne dates). The page works out "now" itself from these events,
+// so it can still tell whether it is low tide even if data.json is a little old.
 async function tides() {
-  const j = JSON.parse(await get(`${BOM}/australia/tides/scripts/getNextTides.php?aac=${TIDE_SITE}&offset=false&tz=Australia/Melbourne`));
-  const r = j.results;
-  const iso = (s: number) => new Date(s * 1000).toISOString();
-  return {
-    site: "Melbourne (Williamstown)",
-    nextHigh: { time: iso(r.next_high.time), height: r.next_high.height as number },
-    nextLow: { time: iso(r.next_low.time), height: r.next_low.height as number },
-  };
+  const melbDate = (offsetDays: number) =>
+    new Date(Date.now() + offsetDays * 86_400_000).toLocaleDateString("en-CA", { timeZone: "Australia/Melbourne" }); // YYYY-MM-DD
+  const params = new URLSearchParams({
+    type: "tide", aac: TIDE_SITE, date: melbDate(-1), days: "4", region: "VIC", offset: "false", offsetName: "",
+    tz: "Australia/Melbourne", tz_js: "Australia/Melbourne",
+  });
+  const events = parseTideTable(await get(`${BOM}/australia/tides/scripts/getTidesTable.php?${params}`));
+  if (events.length === 0) throw new Error("no tide events parsed");
+  return { site: "Melbourne (Williamstown)", events };
 }
 
 // Each source is independent: one failing should not blank the whole page.

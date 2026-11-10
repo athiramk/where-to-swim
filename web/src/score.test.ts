@@ -79,6 +79,28 @@ describe("scoreBeach (worked examples)", () => {
     expect(r.score).toBeGreaterThan(0);
   });
 
+  it("a low-tide-only beach is capped at 35 when the tide is not low", () => {
+    const r = scoreBeach(FACES_WEST, { ...base, needsLowTide: true, lowTide: { inWindow: false, label: "next low 5:40pm" } });
+    expect(r.score).toBe(35);
+    expect(r.label).toBe("Poor");
+    expect(r.reason).toMatch(/low tide/);
+  });
+
+  it("a low-tide-only beach scores normally at low tide", () => {
+    const r = scoreBeach(FACES_WEST, { ...base, needsLowTide: true, lowTide: { inWindow: true, label: "low 5:40pm" } });
+    expect(r.score).toBeGreaterThanOrEqual(90);
+  });
+
+  it("unknown tide for a low-tide-only beach is reported, not guessed", () => {
+    const r = scoreBeach(FACES_WEST, { ...base, needsLowTide: true, lowTide: null });
+    expect(r.unknown).toContain("tide");
+  });
+
+  it("tide is ignored for ordinary beaches", () => {
+    const r = scoreBeach(FACES_WEST, { ...base, lowTide: { inWindow: false, label: "x" } });
+    expect(r.score).toBeGreaterThanOrEqual(90);
+  });
+
   it("different beach orientations change the result for the same wind", () => {
     const wnw = { ...base, windFromDeg: 292.5, windKmh: 18 }; // WNW wind
     const faceWest = scoreBeach(270, wnw).score;

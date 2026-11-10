@@ -1,6 +1,13 @@
 import "./style.css";
-import beaches from "../../data/beaches.json";
-import { parseSeaHeight, scoreBeach, type Conditions, type Result } from "./score.ts";
+import rawBeaches from "../../data/beaches.json";
+import { CONFIG, parseSeaHeight, scoreBeach, type Conditions, type Result } from "./score.ts";
+import { lowTideState, nextEvent, type TideEvent } from "./tide.ts";
+
+interface Beach {
+  id: string; name: string; faces: number; lat: number; lon: number;
+  windStation: string; epaSite: string | null; needsLowTide?: boolean; note?: string;
+}
+const beaches = rawBeaches as Beach[];
 
 interface Station {
   name: string; observedAt: string; windDirText: string | null; windDirDeg: number | null;
@@ -12,13 +19,12 @@ interface Data {
   weatherStation: string;
   bay: { winds: string | null; seas: string | null; weather: string | null; issuedAt: string } | null;
   melbourne: { uvText: string | null; uvIndex: number | null; rainChancePct: number | null } | null;
-  tide: { site: string; nextHigh: { time: string; height: number }; nextLow: { time: string; height: number } } | null;
+  tide: { site: string; events: TideEvent[] } | null;
   warnings: string[] | null;
   waterQuality: Record<string, "Good" | "Fair" | "Poor"> | null;
   errors: string[];
   attribution: string;
 }
-type Beach = (typeof beaches)[number];
 
 const STALE_MIN = 60;
 const app = document.getElementById("app")!;
@@ -36,15 +42,27 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: { class?: stri
   return e;
 }
 
+/** Short tide description for a low-tide-only beach, e.g. "low tide now" or "next low 5:40pm". */
+function lowTideFor(d: Data): { inWindow: boolean; label: string } | null {
+  const now = Date.now();
+  const state = lowTideState(d.tide?.events, now, CONFIG.lowTideWindowHours);
+  if (!state) return null;
+  if (state.inWindow) return { inWindow: true, label: `low tide ${fmtTime(state.nearest.time)}, ${state.nearest.height} m` };
+  const next = nextEvent(d.tide!.events, "low", now);
+  return { inWindow: false, label: next ? `next low ${fmtTime(next.time)}, ${next.height} m` : "tide is not low" };
+}
+
 function conditionsFor(beach: Beach, d: Data): Conditions {
   const wind = d.stations[beach.windStation];
   const wx = d.stations[d.weatherStation];
   return {
+    needsLowTide: !!beach.needsLowTide,
+    lowTide: beach.needsLowTide ? lowTideFor(d) : undefined,
     windFromDeg: wind?.windDirDeg ?? null,
     windKmh: wind?.windKmh ?? null,
     gustKmh: wind?.gustKmh ?? null,
     seaHeightM: parseSeaHeight(d.bay?.seas),
-    waterQuality: d.waterQuality?.[beach.epaSite] ?? null,
+    waterQuality: (beach.epaSite && d.waterQuality?.[beach.epaSite]) || null,
     warnings: d.warnings ?? [],
     airTempC: wx?.airTemp ?? null,
     rainMm: wx?.rainSince9am ?? null,
@@ -110,6 +128,7 @@ function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HT
   if (c.waterQuality) row(dl, "Water quality", c.waterQuality);
   else dl.append(el("dt", { text: "Water quality" }), el("dd", {}, epaLink()));
   row(dl, "Warnings", c.warnings.length ? c.warnings.join("; ") : "none known (BOM warnings not connected)");
+  if (beach.needsLowTide) row(dl, "Tide (needs low)", c.lowTide ? `${c.lowTide.inWindow ? "OK — " : "wait — "}${c.lowTide.label}` : null);
   row(dl, "Air temp", c.airTempC != null ? `${c.airTempC}°C` : null);
   row(dl, "Rain since 9am", c.rainMm != null ? `${c.rainMm} mm` : null);
   const detail = el("div", { class: "detail" },
@@ -137,7 +156,12 @@ function render(d: Data) {
   if (d.errors.length) out.push(el("div", { class: "banner", text: `Some sources failed: ${d.errors.join("; ")}` }));
 
   const bits: string[] = [];
-  if (d.tide) bits.push(`Tide: high ${d.tide.nextHigh.height} m ${fmtTime(d.tide.nextHigh.time)}, low ${d.tide.nextLow.height} m ${fmtTime(d.tide.nextLow.time)}`);
+  if (d.tide) {
+    const hi = nextEvent(d.tide.events, "high", Date.now());
+    const lo = nextEvent(d.tide.events, "low", Date.now());
+    const parts = [hi && `high ${hi.height} m ${fmtTime(hi.time)}`, lo && `low ${lo.height} m ${fmtTime(lo.time)}`].filter(Boolean);
+    if (parts.length) bits.push(`Next tide: ${parts.join(", ")}`);
+  }
   if (d.melbourne?.uvIndex != null) bits.push(`UV ${d.melbourne.uvIndex}`);
   if (d.melbourne?.rainChancePct != null) bits.push(`Rain chance ${d.melbourne.rainChancePct}%`);
   if (bits.length) out.push(el("div", { class: "summary" }, ...bits.map((t) => el("span", { text: t }))));

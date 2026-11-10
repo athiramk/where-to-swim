@@ -4,5 +4,5 @@ export default defineConfig({
   root: "web",
   base: "./",
   build: { outDir: "../dist", emptyOutDir: true },
-  test: { root: ".", include: ["web/src/**/*.test.ts"] },
+  test: { root: ".", include: ["web/src/**/*.test.ts", "fetcher/**/*.test.ts"] },
 });

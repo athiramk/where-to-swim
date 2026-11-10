@@ -4,7 +4,8 @@ export const CONFIG = {
   onshoreFactor: 0.4, // effective wind = speed * (1 + factor * onshore); offshore=-1 -> 0.6x, onshore=+1 -> 1.4x
   windPoints: [[8, 40], [20, 20], [30, 0]] as [number, number][], // [effective km/h, points]
   seaPoints: [[0.2, 25], [0.5, 15], [1.0, 5], [1.5, 0]] as [number, number][], // [metres, points]
-  caps: { poorWater: 35, warning: 25, gust: 40, heavyRain: 55, strongOffshore: 55 },
+  caps: { poorWater: 35, warning: 25, gust: 40, heavyRain: 55, strongOffshore: 55, wrongTide: 35 },
+  lowTideWindowHours: 1.5, // "low tide" = within this many hours of a predicted low
   gustCapKmh: 45,
   heavyRainMm: 10,
   strongOffshoreKmh: 25,
@@ -26,6 +27,10 @@ export interface Conditions {
   warnings: string[];
   airTempC: number | null;
   rainMm: number | null;
+  /** Beach is only worth visiting at low tide (e.g. marine sanctuaries, rock pools). */
+  needsLowTide?: boolean;
+  /** Tide state now; null = unknown. `label` is shown in the cap reason, e.g. "next low 5:40pm". */
+  lowTide?: { inWindow: boolean; label: string } | null;
 }
 
 export interface Result {
@@ -123,6 +128,10 @@ export function scoreBeach(beachFacesDeg: number, c: Conditions): Result {
   // Rain / warnings
   if (c.rainMm != null && c.rainMm >= CONFIG.heavyRainMm) caps.push({ max: CONFIG.caps.heavyRain, why: `heavy rain (${c.rainMm} mm)` });
   if (c.warnings.length > 0) caps.push({ max: CONFIG.caps.warning, why: `warning: ${c.warnings[0]}` });
+  if (c.needsLowTide) {
+    if (c.lowTide == null) unknown.push("tide");
+    else if (!c.lowTide.inWindow) caps.push({ max: CONFIG.caps.wrongTide, why: `needs low tide (${c.lowTide.label})` });
+  }
 
   const sum = windPts + seaPts + waterPts + comfortPts;
   const cap = caps.length ? Math.min(...caps.map((x) => x.max)) : 100;
