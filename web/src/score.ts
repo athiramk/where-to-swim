@@ -31,9 +31,13 @@ export interface Conditions {
   /** Beach is only worth visiting at low tide (e.g. marine sanctuaries, rock pools). */
   needsLowTide?: boolean;
   /** Tide state now; null = unknown. `label` is shown in the cap reason, e.g. "next low 5:40pm". */
-  lowTide?: { inWindow: boolean; label: string } | null;
+  lowTide?: { inWindow: boolean; label: string; bestTime?: string | null } | null;
   /** Daylight at this beach at the time being scored; `label` explains it (e.g. "after dark, sunrise 6:06am"). */
   daylight?: { isDay: boolean; label: string } | null;
+  /** How the sea height was worked out, for display (e.g. "est. chop 0.3 m (bay forecast: Below 1 metre)"). */
+  seaNote?: string | null;
+  /** Rain over the last 72 h (mm), display only. */
+  rain72hMm?: number | null;
   /** Thunderstorms mentioned in the forecast or current weather. */
   storm?: boolean;
 }
@@ -136,7 +140,7 @@ export function scoreBeach(beachFacesDeg: number, c: Conditions): Result {
   }
 
   // Rain / warnings
-  if (c.rainMm != null && c.rainMm >= CONFIG.heavyRainMm) caps.push({ max: CONFIG.caps.heavyRain, why: `heavy rain (${c.rainMm} mm)` });
+  if (c.rainMm != null && c.rainMm >= CONFIG.heavyRainMm) caps.push({ max: CONFIG.caps.heavyRain, why: `heavy rain (${c.rainMm} mm in 24 h)` });
   if (c.warnings.length > 0) caps.push({ max: CONFIG.caps.warning, why: `warning: ${c.warnings[0]}` });
   if (c.daylight && !c.daylight.isDay) caps.push({ max: CONFIG.caps.dark, why: c.daylight.label });
   if (c.storm) caps.push({ max: CONFIG.caps.storm, why: "thunderstorms possible" });

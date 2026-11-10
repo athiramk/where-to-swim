@@ -3,13 +3,15 @@
 import { XMLParser } from "fast-xml-parser";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { rainTotals, type RainReading } from "./rain.ts";
 import { parseTideTable } from "./tides.ts";
 import { relevantWarnings } from "./warnings.ts";
 
 const UA = "where-to-swim personal-use app";
 const BOM = "https://www.bom.gov.au";
-const WIND_STATION = "95864"; // St Kilda Harbour RMYS (wind, gusts)
+const PRIMARY_WIND_STATION = "95864"; // St Kilda Harbour RMYS: required, and the fallback when a beach's own station is down
 const WEATHER_STATION = "95936"; // Melbourne (Olympic Park) (air temp, rain)
 const TIDE_SITE = "VIC_TP003"; // Melbourne (Williamstown)
 
@@ -36,6 +38,16 @@ async function observation(station: string) {
   const r = json.observations.data[0];
   const issued = String(r.aifstime_utc); // yyyymmddhhmmss UTC
   const observedAt = `${issued.slice(0, 4)}-${issued.slice(4, 6)}-${issued.slice(6, 8)}T${issued.slice(8, 10)}:${issued.slice(10, 12)}:${issued.slice(12, 14)}Z`;
+  // History is newest-first, half-hourly (about 3 days). Used to total rain over 24 h / 72 h.
+  const readings: RainReading[] = (json.observations.data as any[]).map((x) => {
+    const u = String(x.aifstime_utc);
+    return {
+      timeMs: Date.UTC(+u.slice(0, 4), +u.slice(4, 6) - 1, +u.slice(6, 8), +u.slice(8, 10), +u.slice(10, 12), +u.slice(12, 14)),
+      localFull: String(x.local_date_time_full),
+      since9am: num(x.rain_trace),
+    };
+  });
+  const rain = rainTotals(readings, Date.now());
   return {
     name: json.observations.header[0].name as string,
     observedAt,
@@ -45,6 +57,9 @@ async function observation(station: string) {
     gustKmh: num(r.gust_kmh),
     airTemp: num(r.air_temp),
     rainSince9am: num(r.rain_trace),
+    rain24h: rain.rain24h,
+    rain72h: rain.rain72h,
+    rainHistoryHours: rain.coverageHours,
     weather: typeof r.weather === "string" && r.weather !== "-" && r.weather.trim() ? (r.weather as string) : null,
   };
 }
@@ -109,9 +124,11 @@ async function safe<T>(label: string, fn: () => Promise<T>, errors: string[]): P
 
 async function main() {
   const errors: string[] = [];
-  const [wind, weather, bay, melb, tide, warn] = await Promise.all([
-    safe("wind obs", () => observation(WIND_STATION), errors),
-    safe("weather obs", () => observation(WEATHER_STATION), errors),
+  // Every wind station the beaches use (data/beaches.json), plus the primary and the temp/rain station.
+  const beaches = JSON.parse(await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../data/beaches.json"), "utf8")) as { windStation: string }[];
+  const ids = [...new Set([PRIMARY_WIND_STATION, WEATHER_STATION, ...beaches.map((b) => b.windStation)])];
+  const [stationList, bay, melb, tide, warn] = await Promise.all([
+    Promise.all(ids.map((id) => safe(`obs ${id}`, () => observation(id), errors))),
     safe("bay forecast", bayForecast, errors),
     safe("melbourne forecast", melbourneForecast, errors),
     safe("tides", tides, errors),
@@ -120,7 +137,7 @@ async function main() {
 
   const data = {
     fetchedAt: new Date().toISOString(),
-    stations: { [WIND_STATION]: wind, [WEATHER_STATION]: weather },
+    stations: Object.fromEntries(ids.map((id, i) => [id, stationList[i]])),
     weatherStation: WEATHER_STATION,
     bay,
     melbourne: melb,
@@ -136,6 +153,7 @@ async function main() {
   await writeFile(out, JSON.stringify(data, null, 2));
   console.log(`wrote ${out}${errors.length ? ` (${errors.length} source(s) failed)` : ""}`);
   // Core data missing -> non-zero exit, so CI keeps the last good deployment instead of publishing a broken page.
+  const wind = stationList[ids.indexOf(PRIMARY_WIND_STATION)];
   if (!wind || !bay) process.exitCode = 1;
 }
 

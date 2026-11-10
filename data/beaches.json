@@ -1,12 +1,12 @@
 [
-  {"id": "sandridge", "name": "Sandridge", "faces": 280, "lat": -37.8345, "lon": 144.9395, "windStation": "95864", "epaSite": "Sandridge"},
-  {"id": "port-melbourne", "name": "Port Melbourne", "faces": 275, "lat": -37.84, "lon": 144.941, "windStation": "95864", "epaSite": "Port Melbourne"},
-  {"id": "south-melbourne", "name": "South Melbourne", "faces": 265, "lat": -37.848, "lon": 144.942, "windStation": "95864", "epaSite": "South Melbourne"},
-  {"id": "middle-park", "name": "Middle Park", "faces": 260, "lat": -37.857, "lon": 144.954, "windStation": "95864", "epaSite": "Middle Park"},
-  {"id": "albert-park", "name": "Albert Park", "faces": 255, "lat": -37.863, "lon": 144.96, "windStation": "95864", "epaSite": "Albert Park"},
-  {"id": "st-kilda", "name": "St Kilda", "faces": 255, "lat": -37.868, "lon": 144.974, "windStation": "95864", "epaSite": "St Kilda"},
-  {"id": "elwood", "name": "Elwood", "faces": 250, "lat": -37.882, "lon": 144.984, "windStation": "95864", "epaSite": "Elwood"},
-  {"id": "jawbone", "name": "Jawbone Marine Sanctuary", "faces": 165, "lat": -37.866, "lon": 144.867, "windStation": "95864", "epaSite": null, "needsLowTide": true, "note": "Williamstown, west shore: faces south-east, so winds from the S/SE are onshore", "maxLowTideM": 0.5},
-  {"id": "half-moon-bay", "name": "Half Moon Bay", "faces": 250, "lat": -37.978, "lon": 145.016, "windStation": "95864", "epaSite": "Half Moon Bay", "needsLowTide": true, "note": "Black Rock", "maxLowTideM": 0.5},
-  {"id": "ricketts-point", "name": "Ricketts Point Marine Sanctuary", "faces": 255, "lat": -37.993, "lon": 145.031, "windStation": "95864", "epaSite": "Ricketts Point", "needsLowTide": true, "note": "Beaumaris", "maxLowTideM": 0.5}
+  {"id": "sandridge", "name": "Sandridge", "faces": 280, "lat": -37.8345, "lon": 144.9395, "windStation": "95864", "epaSite": "Sandridge", "fetchKm": 6},
+  {"id": "port-melbourne", "name": "Port Melbourne", "faces": 275, "lat": -37.84, "lon": 144.941, "windStation": "95864", "epaSite": "Port Melbourne", "fetchKm": 8},
+  {"id": "south-melbourne", "name": "South Melbourne", "faces": 265, "lat": -37.848, "lon": 144.942, "windStation": "95864", "epaSite": "South Melbourne", "fetchKm": 10},
+  {"id": "middle-park", "name": "Middle Park", "faces": 260, "lat": -37.857, "lon": 144.954, "windStation": "95864", "epaSite": "Middle Park", "fetchKm": 14},
+  {"id": "albert-park", "name": "Albert Park", "faces": 255, "lat": -37.863, "lon": 144.96, "windStation": "95864", "epaSite": "Albert Park", "fetchKm": 18},
+  {"id": "st-kilda", "name": "St Kilda", "faces": 255, "lat": -37.868, "lon": 144.974, "windStation": "95864", "epaSite": "St Kilda", "fetchKm": 20},
+  {"id": "elwood", "name": "Elwood", "faces": 250, "lat": -37.882, "lon": 144.984, "windStation": "95864", "epaSite": "Elwood", "fetchKm": 24},
+  {"id": "jawbone", "name": "Jawbone Marine Sanctuary", "faces": 165, "lat": -37.866, "lon": 144.867, "windStation": "95941", "epaSite": null, "needsLowTide": true, "note": "Williamstown, west shore: faces south-east, so winds from the S/SE are onshore", "maxLowTideM": 0.5, "fetchKm": 30},
+  {"id": "half-moon-bay", "name": "Half Moon Bay", "faces": 250, "lat": -37.978, "lon": 145.016, "windStation": "95872", "epaSite": "Half Moon Bay", "needsLowTide": true, "note": "Black Rock", "maxLowTideM": 0.5, "fetchKm": 30},
+  {"id": "ricketts-point", "name": "Ricketts Point Marine Sanctuary", "faces": 255, "lat": -37.993, "lon": 145.031, "windStation": "95872", "epaSite": "Ricketts Point", "needsLowTide": true, "note": "Beaumaris", "maxLowTideM": 0.5, "fetchKm": 35}
 ]

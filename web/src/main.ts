@@ -1,7 +1,8 @@
 import "./style.css";
 import rawBeaches from "../../data/beaches.json";
 import { scoreBeach, type Result } from "./score.ts";
-import { conditionsFor, daylightFor, fmtTime, type Beach, type Data, type Station } from "./conditions.ts";
+import { conditionsFor, daylightFor, fmtTime, fmtWhen, nextDaylightLowWindow, type Beach, type Data, type Station } from "./conditions.ts";
+import { installPrompt, isIos, isStandalone } from "./install.ts";
 import { nextEvent } from "./tide.ts";
 import type { Conditions } from "./score.ts";
 
@@ -76,15 +77,16 @@ function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HT
 
   const dl = el("dl");
   row(dl, "Wind", c.windKmh != null ? `${wind?.windDirText ?? "?"} ${Math.round(c.windKmh)} km/h${c.gustKmh != null ? `, gusts ${Math.round(c.gustKmh)}` : ""}` : null);
-  row(dl, "Sea (bay)", d.bay?.seas ?? null);
+  row(dl, "Sea", c.seaNote ?? null);
   if (c.waterQuality) row(dl, "Water quality", c.waterQuality);
   else dl.append(el("dt", { text: "Water quality" }), el("dd", {}, epaLink()));
   row(dl, "Warnings", d.warnings === null ? null : d.warnings.length ? d.warnings.join("; ") : "none active (BOM Victoria)", "unavailable (couldn't read BOM feed)");
   if (c.daylight) row(dl, "Daylight", c.daylight.label);
   if (c.storm) row(dl, "Weather", "thunderstorms possible");
   if (beach.needsLowTide) row(dl, "Tide (needs low)", c.lowTide ? `${c.lowTide.inWindow ? "OK — " : "wait — "}${c.lowTide.label}` : null);
+  if (beach.needsLowTide) row(dl, "Best time", c.lowTide?.bestTime ?? null, "no daylight low tide in the next 2 days");
   row(dl, "Air temp", c.airTempC != null ? `${c.airTempC}°C` : null);
-  row(dl, "Rain since 9am", c.rainMm != null ? `${c.rainMm} mm` : null);
+  row(dl, "Rain (24 h / 72 h)", c.rainMm != null ? `${c.rainMm} mm${c.rain72hMm != null ? ` / ${c.rain72hMm} mm` : ""}` : null);
   const detail = el("div", { class: "detail" },
     el("div", { class: "detail-top" }, compass(beach, c.windFromDeg), dl),
     el("div", { class: "points", text: `Points — wind ${r.points.wind}/40, sea ${r.points.sea}/25, water ${r.points.water}/25, comfort ${r.points.comfort}/10` +
@@ -97,7 +99,70 @@ function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HT
   return el("article", { class: `card ${r.label}` }, btn, detail);
 }
 
+// ---- Install to home screen -------------------------------------------------------------------------------------
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+const DISMISS_KEY = "where-to-swim:install-dismissed";
+let deferredInstall: BeforeInstallPromptEvent | null = null;
+let lastData: Data | null = null;
+let installDismissed = false;
+try { installDismissed = localStorage.getItem(DISMISS_KEY) === "1"; } catch { /* storage unavailable: fine */ }
+
+function installBar(): HTMLElement | null {
+  const mode = installPrompt({
+    standalone: isStandalone(matchMedia("(display-mode: standalone)").matches, (navigator as { standalone?: boolean }).standalone),
+    dismissed: installDismissed,
+    hasNativePrompt: deferredInstall !== null,
+    ios: isIos(navigator.userAgent, navigator.platform, navigator.maxTouchPoints),
+  });
+  if (!mode) return null;
+
+  const dismiss = (label: string) => {
+    const b = el("button", { class: "install-btn secondary", text: label });
+    b.addEventListener("click", () => {
+      installDismissed = true;
+      try { localStorage.setItem(DISMISS_KEY, "1"); } catch { /* ignore */ }
+      if (lastData) render(lastData);
+    });
+    return b;
+  };
+
+  if (mode === "native") {
+    const install = el("button", { class: "install-btn", text: "Install" });
+    install.addEventListener("click", async () => {
+      const ev = deferredInstall;
+      if (!ev) return;
+      await ev.prompt();
+      await ev.userChoice;
+      deferredInstall = null;
+      if (lastData) render(lastData);
+    });
+    return el("div", { class: "install" }, el("span", { text: "Add Where to Swim to your home screen." }), install, dismiss("Not now"));
+  }
+  return el("div", { class: "install" }, el("span", { text: "To install: tap the Share button, then “Add to Home Screen”." }), dismiss("Got it"));
+}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault(); // keep the event so our own Install button can trigger it
+  deferredInstall = e as BeforeInstallPromptEvent;
+  if (lastData) render(lastData);
+});
+window.addEventListener("appinstalled", () => {
+  deferredInstall = null;
+  if (lastData) render(lastData);
+});
+
+// Offline support (production only, so `npm run dev` isn't affected by caching).
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => { /* not fatal */ });
+  });
+}
+
 function render(d: Data) {
+  lastData = d;
   const ranked = beaches
     .map((b) => { const c = conditionsFor(b, d); return { b, c, r: scoreBeach(b.faces, c) }; })
     .sort((x, y) => y.r.score - x.r.score);
@@ -109,6 +174,9 @@ function render(d: Data) {
   if (oldest > STALE_MIN) out.push(el("div", { class: "banner", text: `Data is ${Math.round(oldest)} minutes old — conditions may have changed.` }));
   if (d.errors.length) out.push(el("div", { class: "banner", text: `Some sources failed: ${d.errors.join("; ")}` }));
 
+  const bar = installBar();
+  if (bar) out.push(bar);
+
   const bits: string[] = [];
   if (d.tide) {
     const hi = nextEvent(d.tide.events, "high", Date.now());
@@ -118,6 +186,9 @@ function render(d: Data) {
   }
   const sun = daylightFor(beaches[0], Date.now());
   if (sun) bits.push(sun.label);
+  const lowBeach = beaches.find((b) => b.needsLowTide);
+  const lowWin = lowBeach ? nextDaylightLowWindow(lowBeach, d, Date.now()) : null;
+  if (lowWin) bits.push(`Next daylight low tide: ${fmtWhen(lowWin.startMs, Date.now())}–${fmtTime(lowWin.endMs)}`);
   if (d.melbourne?.uvIndex != null) bits.push(`UV ${d.melbourne.uvIndex}`);
   if (d.melbourne?.rainChancePct != null) bits.push(`Rain chance ${d.melbourne.rainChancePct}%`);
   if (bits.length) out.push(el("div", { class: "summary" }, ...bits.map((t) => el("span", { text: t }))));
