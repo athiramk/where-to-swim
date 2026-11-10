@@ -1,6 +1,6 @@
 // Turns fetched data + a beach + a point in time into scoring inputs. Pure (no DOM), so it is easy to test.
 import { estimateChopM } from "./chop.ts";
-import { CONFIG, mentionsThunderstorm, parseSeaHeight, type Conditions } from "./score.ts";
+import { CONFIG, mentionsThunderstorm, parseSeaHeight, parseSwellHeight, type Conditions } from "./score.ts";
 import { sunTimes } from "./sun.ts";
 import { lowTideState, nextEvent, type TideEvent } from "./tide.ts";
 
@@ -15,8 +15,14 @@ export interface Beach {
   needsLowTide?: boolean;
   /** Open-water distance (km) the wind can blow over straight out from the beach; used to estimate local chop. */
   fetchKm?: number;
+  /** BOM tide site (AAC, e.g. "VIC_TP020" Flinders Jetty). Defaults to Williamstown (VIC_TP003), the Port Phillip site. */
+  tideSite?: string;
+  /** Which BOM marine forecast describes this beach: "bay" (Port Phillip, default) or "coast" (open Bass Strait coast, with swell). */
+  forecast?: "bay" | "coast";
   /** For low-tide beaches: only lows at or below this height (m) count as "low". */
   maxLowTideM?: number;
+  /** For low-tide beaches: hours either side of a low that count as "low tide" (default CONFIG.lowTideWindowHours). */
+  lowTideWindowHours?: number;
   note?: string;
   /** "Good to know" tips from published sources, shown on the card. */
   tips?: Tip[];
@@ -52,8 +58,12 @@ export interface Data {
   stations: Record<string, Station | null>;
   weatherStation: string;
   bay: { winds: string | null; seas: string | null; weather: string | null; issuedAt: string } | null;
+  /** Open-coast (Bass Strait) marine forecast: includes swell. */
+  coast?: { area: string; winds: string | null; seas: string | null; swell1: string | null; swell2: string | null; weather: string | null; issuedAt: string } | null;
   melbourne: { uvText: string | null; uvIndex: number | null; rainChancePct: number | null } | null;
-  tide: { site: string; events: TideEvent[] } | null;
+  tide: { site: string; events: TideEvent[] } | null; // default tide site (Williamstown)
+  /** Tide events per BOM tide site (AAC). Beaches pick theirs with `tideSite`. */
+  tides?: Record<string, { site: string; events: TideEvent[] } | null>;
   warnings: string[] | null; // null = couldn't read the feed; [] = none active
   waterQuality: Record<string, "Good" | "Fair" | "Poor"> | null;
   errors: string[];
@@ -63,6 +73,16 @@ export interface Data {
 export const TZ = "Australia/Melbourne";
 /** St Kilda Harbour: used when a beach's own wind station is unavailable. */
 export const FALLBACK_WIND_STATION = "95864";
+/** Default tide site: Melbourne (Williamstown). */
+export const DEFAULT_TIDE_SITE = "VIC_TP003";
+
+/** Tide events for the beach's tide site (falls back to the default `tide` field for older data). */
+export function tideEventsFor(beach: Beach, d: Data): TideEvent[] | null {
+  const site = beach.tideSite ?? DEFAULT_TIDE_SITE;
+  return d.tides?.[site]?.events ?? (site === DEFAULT_TIDE_SITE ? (d.tide?.events ?? null) : null);
+}
+
+export const windowHoursFor = (beach: Beach): number => beach.lowTideWindowHours ?? CONFIG.lowTideWindowHours;
 
 export function fmtTime(when: string | number): string {
   return new Date(when).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", timeZone: TZ });
@@ -91,9 +111,9 @@ function qualifyingLows(beach: Beach, events: TideEvent[], atMs: number): TideEv
  * Returns null if no daylight low is in the tide data.
  */
 export function nextDaylightLowWindow(beach: Beach, d: Data, atMs: number): { low: TideEvent; startMs: number; endMs: number } | null {
-  const events = d.tide?.events;
+  const events = tideEventsFor(beach, d);
   if (!events) return null;
-  const halfMs = CONFIG.lowTideWindowHours * 3_600_000;
+  const halfMs = windowHoursFor(beach) * 3_600_000;
   for (const low of qualifyingLows(beach, events, atMs - halfMs)) {
     const lowMs = new Date(low.time).getTime();
     if (!daylightFor(beach, lowMs)?.isDay) continue;
@@ -112,7 +132,7 @@ export function lowTideFor(
   d: Data,
   atMs: number,
 ): { inWindow: boolean; label: string; bestTime: string | null } | null {
-  const state = lowTideState(d.tide?.events, atMs, CONFIG.lowTideWindowHours, beach.maxLowTideM);
+  const state = lowTideState(tideEventsFor(beach, d), atMs, windowHoursFor(beach), beach.maxLowTideM);
   if (!state) return null;
   const win = nextDaylightLowWindow(beach, d, atMs);
   const bestTime = win
@@ -142,18 +162,32 @@ export function daylightFor(beach: Beach, atMs: number): { isDay: boolean; label
 export function conditionsFor(beach: Beach, d: Data, atMs: number = Date.now()): Conditions {
   const wind = d.stations[beach.windStation] ?? d.stations[FALLBACK_WIND_STATION];
   const wx = d.stations[d.weatherStation];
-  const forecastM = parseSeaHeight(d.bay?.seas);
-  // Local chop from wind + fetch differs between beaches; the bay forecast is a floor (half of it) so a stormy
-  // forecast still counts. Falls back to the forecast alone if wind or fetch is missing.
+  const coast = beach.forecast === "coast";
+  const area = coast ? d.coast : d.bay;
+  // Sea height from the forecast that covers this beach. Bay: the seas text. Open coast: the larger of seas and the
+  // first swell clause, because swell is what breaks on an exposed reef.
+  let forecastM: number | null;
+  let forecastNote: string | null;
+  if (coast) {
+    const s = parseSeaHeight(d.coast?.seas);
+    const w = parseSwellHeight(d.coast?.swell1);
+    forecastM = s == null && w == null ? null : Math.max(s ?? 0, w ?? 0);
+    forecastNote = d.coast ? `Coast forecast: seas ${(d.coast.seas ?? "n/a").replace(/\.$/, "")}; swell ${(d.coast.swell1 ?? "n/a").replace(/\.$/, "")}` : null;
+  } else {
+    forecastM = parseSeaHeight(d.bay?.seas);
+    forecastNote = d.bay?.seas ?? null;
+  }
+  // Local chop from wind + fetch differs between bay beaches; the bay forecast is a floor (half of it) so a stormy
+  // forecast still counts. Falls back to the forecast alone if wind or fetch is missing (always, for open-coast beaches).
   const localM = estimateChopM(wind?.windKmh, wind?.windDirDeg, beach.faces, beach.fetchKm);
   const seaHeightM = localM == null ? forecastM : Math.max(localM, 0.5 * (forecastM ?? 0));
   const seaNote =
-    localM == null ? (d.bay?.seas ?? null) : `est. chop ${localM.toFixed(1)} m${d.bay?.seas ? ` (bay forecast: ${d.bay.seas.replace(/\.$/, "")})` : ""}`;
+    localM == null ? forecastNote : `est. chop ${localM.toFixed(1)} m${d.bay?.seas ? ` (bay forecast: ${d.bay.seas.replace(/\.$/, "")})` : ""}`;
   return {
     needsLowTide: !!beach.needsLowTide,
     lowTide: beach.needsLowTide ? lowTideFor(beach, d, atMs) : undefined,
     daylight: daylightFor(beach, atMs),
-    storm: mentionsThunderstorm(d.bay?.weather) || mentionsThunderstorm(wind?.weather) || mentionsThunderstorm(wx?.weather),
+    storm: mentionsThunderstorm(area?.weather) || mentionsThunderstorm(wind?.weather) || mentionsThunderstorm(wx?.weather),
     windFromDeg: wind?.windDirDeg ?? null,
     windKmh: wind?.windKmh ?? null,
     gustKmh: wind?.gustKmh ?? null,

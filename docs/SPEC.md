@@ -25,6 +25,7 @@ It ranks seven Port Phillip Bay beaches by a 0–100 score built from Bureau of 
 | 24 h / 72 h rain, local chop estimate, per-beach wind stations | Done (Phase 2) |
 | Time view: next daylight low-tide window (tides + daylight only) | Done (Phase 3, reduced scope). No +3h/+6h/tomorrow weather scoring: BOM's free feeds have no hourly forecast (see §4 "Do NOT use BOM's app API") |
 | Time-ahead view (+3h / tomorrow) | Not built |
+| Mushroom Reef Marine Sanctuary (Flinders, open Bass Strait coast) | Added 2026-11-10 with its own tide site (Flinders Jetty), the Bass Strait coast marine forecast (seas + swell) and Cerberus wind. See "Open-coast data" in §4. **Wind is a weak spot: Cerberus is sheltered** |
 | Install to home screen + offline (PWA) | Done (Phase 4). **Not yet tested on a real phone.** Phone notifications/alerts were offered and **declined by the owner**: do not add them |
 
 ## 3. Architecture
@@ -111,6 +112,14 @@ Station positions come from each station's page (`https://www.bom.gov.au/product
 - Half Moon Bay, Ricketts Point: Fawkner Beacon (8-10 km, open water). Frankston Beach is ~15-19 km away.
 - Different stations can disagree (e.g. NE 15 at Fawkner vs NNW 17 at St Kilda at the same moment), so expect scores to differ between beaches for reasons other than orientation.
 
+### Open-coast data for Mushroom Reef (added 2026-11-10)
+Mushroom Reef is at Flinders on the **open coast (Bass Strait)**, ~80 km from South Melbourne, so Port Phillip data does not apply to it. Each beach in `data/beaches.json` can now name its own `tideSite`, `forecast` area and `lowTideWindowHours`.
+- **Marine forecast:** `https://www.bom.gov.au/fwo/IDV10200.xml`, area `VIC_MW002` "Central Coast: Cape Otway to Wilsons Promontory", `forecast-period index=0`. Text types `forecast_winds`, `forecast_seas`, `forecast_swell1`, `forecast_swell2`, `forecast_weather`. Stored as `coast` in `data.json`. (`IDV10200` also has the other coastal zones; `IDV10460` is the Port Phillip one.)
+- **Sea height for coast beaches** = larger of the seas value and the **first clause only** of `forecast_swell1` (`parseSwellHeight`), because swell text often continues with a regional change ("…around 1 metre, increasing to 1 to 2 metres in the west"). The card shows BOM's full wording. There is no local chop model for these beaches (no `fetchKm`): open-ocean swell is not fetch-limited the way bay chop is.
+- **Tides:** the same `getTidesTable.php` endpoint with `aac=VIC_TP020` (**Flinders Jetty**, a BOM secondary site that has its own predictions). One table is fetched per distinct `tideSite` any beach uses (`tides` in `data.json`). **Flinders is very different from Williamstown**: on 2026-11-10 its lows were 7:15 am (1.03 m) and 7:10 pm (0.40 m) vs Williamstown's 10:54 am (0.50 m) and 10:50 pm (0.22 m): about 3.5 hours earlier, and a larger range (highs ~2.5 m vs ~0.9 m). **Heights from different sites are not comparable** (so `maxLowTideM` 0.5, which comes from Parks Victoria's Ricketts Point advice, must not be reused at Flinders). A beach whose own tide site data is missing is reported as tide *unknown*; it never silently uses Williamstown's times.
+- **Wind:** Cerberus (94898, Western Port, -38.36, 145.18, about 22 km from the reef) is the nearest reporting station; Rhyll (94892) is ~29 km away. **Both are in sheltered Western Port, so they likely under-read wind at the exposed south-facing reef** (on 2026-11-10 Cerberus read SSE 7 km/h while the coast forecast said E to SE 10-15 knots, i.e. 18-28 km/h). No open-coast station near Flinders is in BOM's Melbourne observation list (Cape Otway, Cape Nelson, Wilsons Promontory are far away). See §12.
+- **Bearing/position:** `faces` 180 comes from Parks Victoria's text that the sanctuary "extends offshore to the south". `lat`/`lon` (-38.490, 144.998) are approximate and used for sunrise/sunset only.
+
 ### BOM warnings
 No warnings product exists among the `IDV*.xml` FTP files; the usable feed is the RSS at `/fwo/IDZ00059.warnings_vic.xml` (see table). **Verify the parser the first time a real warning is issued**: open the feed, compare item titles with `fetcher/warnings.test.ts`, and adjust `HAZARD` / `OTHER_REGION` / `OUR_AREA` in `fetcher/warnings.ts` if needed.
 
@@ -131,9 +140,13 @@ No warnings product exists among the `IDV*.xml` FTP files; the usable feed is th
   },
   "weatherStation": "95936",                    // which station supplies temp/rain
   "bay": { "winds": "...", "seas": "Below 1 metre.", "weather": "...", "issuedAt": "ISO UTC" } | null,
+  "coast": { "area": "Central Coast: Cape Otway to Wilsons Promontory", "winds": "...", "seas": "Below 1 metre.",
+             "swell1": "Southwesterly around 1 metre, increasing to 1 to 2 metres in the west.", "swell2": null,
+             "weather": "...", "issuedAt": "ISO UTC" } | null,      // open-coast (Bass Strait) forecast, used by beaches with forecast: "coast"
   "melbourne": { "uvText": "...", "uvIndex": 9, "rainChancePct": 30 } | null,
   "tide": { "site": "Melbourne (Williamstown)",
-            "events": [ { "type": "high"|"low", "time": "ISO UTC", "height": 0.85 }, ... ] } | null,
+            "events": [ { "type": "high"|"low", "time": "ISO UTC", "height": 0.85 }, ... ] } | null,   // default site; kept for older page versions
+  "tides": { "VIC_TP003": { "site": "...", "events": [...] }, "VIC_TP020": { "site": "Flinders Jetty", "events": [...] } },  // one per tideSite used by a beach
             // ~yesterday to +2 days, sorted. The page works out "next high/low" and "is it low tide now" itself.
   "warnings": [],                               // string[] of relevant warning titles; null if the feed failed
   "waterQuality": null,                         // { [epaSite]: "Good"|"Fair"|"Poor" } when wired
@@ -146,7 +159,7 @@ Failure policy: each source is fetched independently (`safe()` in `fetch.ts`); a
 
 ## 6. Beach config (`data/beaches.json`)
 
-Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the beach looks out over the water**), `lat`, `lon` (approximate, display only), `windStation` (BOM station id), `epaSite` (EPA's name for the beach, or `null` if EPA doesn't cover it; for future use), optional `fetchKm` (km of open water the wind can blow over straight out from the beach, a **map estimate** used for the local chop estimate), optional `needsLowTide: true`, optional `maxLowTideM` (only lows at or below this height, in metres, count as low), optional `note`. Optional `tips` (list of `{text, source, url}`) and `tipsChecked` (YYYY-MM-DD): see "Good to know" below.
+Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the beach looks out over the water**), `lat`, `lon` (approximate, display only), `windStation` (BOM station id), `epaSite` (EPA's name for the beach, or `null` if EPA doesn't cover it; for future use), optional `fetchKm` (km of open water the wind can blow over straight out from the beach, a **map estimate** used for the local chop estimate), optional `needsLowTide: true`, optional `maxLowTideM` (only lows at or below this height, in metres, count as low), optional `note`. Optional `tideSite` (BOM tide AAC; default `VIC_TP003` Williamstown), `forecast` (`"bay"` default, or `"coast"` for open-coast beaches), `lowTideWindowHours` (default 1.5). Optional `tips` (list of `{text, source, url}`) and `tipsChecked` (YYYY-MM-DD): see "Good to know" below.
 
 | Beach | faces | fetchKm (est.) | Wind station | Low tide only |
 |---|---|---|---|---|
@@ -159,6 +172,7 @@ Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the
 | Elwood | 250 | 24 | 95864 | |
 | Jawbone Marine Sanctuary (Williamstown, west shore) | 165 | 30 | 95941 | yes |
 | Half Moon Bay (Black Rock) | 250 | 30 | 95872 | no (rule lifted 2026-11-10) |
+| Mushroom Reef Marine Sanctuary (Flinders, open coast) | 180 | none (open coast) | 94898 (Cerberus, sheltered) | yes, own tide site VIC_TP020 (Flinders Jetty), 1.5 h window, no height limit |
 | Ricketts Point Marine Sanctuary (Beaumaris) | 255 | 35 | 95872 | yes |
 
 **Bearings and coordinates are estimates from coastline shape**, not surveyed. Jawbone is on the **west** shore and faces roughly south-east, so the usual "easterly = offshore" intuition does not apply there. **`fetchKm` values are rough map estimates and should be checked against a chart**; they only matter for onshore winds. To add a beach, add one JSON entry (candidates: Brighton, Altona). No code change needed. `needsLowTide` beaches were requested by the owner as "worth visiting only at low tide and in good weather" (Flinders was considered and dropped: it is on Western Port, outside this data).
@@ -180,7 +194,7 @@ All constants are in the exported `CONFIG`. Change numbers there and update test
 | Water quality | 25 | Good 25, Fair 15, Poor 0. **Unknown → 15 (currently always unknown)** |
 | Comfort | 10 | Air temp 22–32 °C → 10; falling linearly to 0 at 12 °C and 40 °C. Missing → 5 |
 
-   **Sea height used for the Sea points** = `max(localChop, 0.5 × bayForecastHeight)`. `localChop` (`web/src/chop.ts`) = `1.6e-3 × U × sqrt(F/g)` with U = wind in m/s and F = effective fetch in metres (`fetchKm × max(0, onshore)`, minimum 0.5 km), capped at 2 m. The bay forecast acts as a floor so a stormy forecast still counts when the local wind is light. If wind or `fetchKm` is missing, the bay forecast alone is used. The card shows e.g. "est. chop 0.3 m (bay forecast: Below 1 metre)". This ignores water depth and wind duration.
+   **Open-coast beaches** (`forecast: "coast"`) skip this and use the coast forecast's seas/swell instead (see "Open-coast data" in §4). **For bay beaches, sea height used for the Sea points** = `max(localChop, 0.5 × bayForecastHeight)`. `localChop` (`web/src/chop.ts`) = `1.6e-3 × U × sqrt(F/g)` with U = wind in m/s and F = effective fetch in metres (`fetchKm × max(0, onshore)`, minimum 0.5 km), capped at 2 m. The bay forecast acts as a floor so a stormy forecast still counts when the local wind is light. If wind or `fetchKm` is missing, the bay forecast alone is used. The card shows e.g. "est. chop 0.3 m (bay forecast: Below 1 metre)". This ignores water depth and wind duration.
 4. **Caps** (final score = min(sum, lowest applicable cap)):
    - Poor water quality → 35
    - **After dark** → 20 (daylight = sunrise − 30 min to sunset + 30 min, `CONFIG.twilightMin`; computed per beach from lat/lon in `web/src/sun.ts`; label e.g. "after dark, sunrise 6:03am")
@@ -218,9 +232,10 @@ Worked examples (also tests): calm east 9 km/h, 0.2 m, Good water, 24 °C → 98
 
 ### "Good to know" tips (per-beach, from published sources)
 Beaches can carry `tips` in `data/beaches.json`: short paraphrased facts, each with a `source` name and an `https` `url`, plus `tipsChecked` (the date they were verified against the pages). The expanded card shows them as a list with a "source ↗" link on each, and a note: "From official and local-guide pages (checked <date>), not live conditions. Rules and closures can change." Links use `rel="noopener noreferrer"` and all text is inserted with `textContent`.
-- Currently only the three sanctuary/Black Rock beaches have tips (Jawbone 5, Half Moon Bay 4, Ricketts Point 4). The seven Melbourne-side beaches have none yet; the card simply omits the section.
+- Currently only the sanctuary/Black Rock/Flinders beaches have tips (Jawbone 5, Half Moon Bay 4, Ricketts Point 4, Mushroom Reef 6). The seven Melbourne-side beaches have none yet; the card simply omits the section.
 - These are **not visitor reviews**: they come from Parks Victoria, Hobsons Bay Council and Melbourne Playgrounds pages. Each fact was verified against the actual page on 2026-11-10 (quotes checked, not search summaries). Do not add a tip you haven't confirmed on its source page.
-- **Not verified, so deliberately left out:** a claim seen in a search summary that Jawbone's beach is "narrow at low tide or non-existent at high tide" (no official page says it); BeachSafe's lifeguard status for Half Moon Bay (the page didn't load); and Half Moon Bay patrol hours/season (not published on the page used).
+- **Mushroom Reef tips** come from three Parks Victoria pages (the sanctuary page, the Flinders Ocean Beach page and the snorkelling article), verified 2026-11-10. The landslip and toilet items are from an **undated** "Change of Conditions" notice, so the card says "(undated)".
+- **Not verified, so deliberately left out:** for Mushroom Reef, a search-summary claim of "2 hours either side of low tide" and a mobile-phone-coverage warning (neither is on the Parks Victoria pages); and a claim seen in a search summary that Jawbone's beach is "narrow at low tide or non-existent at high tide" (no official page says it); BeachSafe's lifeguard status for Half Moon Bay (the page didn't load); and Half Moon Bay patrol hours/season (not published on the page used).
 - Tips go stale (closures, parking rules, prices). Re-check them when revisiting, and update `tipsChecked`. `web/src/beaches.test.ts` checks the shape (text, source, https link, checked date).
 
 ## 8b. Install to home screen (PWA)
@@ -300,6 +315,10 @@ The owner wants to tune these using real-world experience ("it said X but it was
 | Onshore wind factor | 0.4 (offshore ×0.6, onshore ×1.4) | Tune per beach exposure |
 | Sea state | `max(local chop estimate, 0.5 × bay forecast)`; chop = `1.6e-3·U·sqrt(F/g)` | Check against reality; add depth/duration; weight forecast differently |
 | `fetchKm` per beach | Map estimates (6-35 km) | Measure properly on a chart; use per-sector fetch instead of one number |
+| **Mushroom Reef wind** (2026-11-10) | Cerberus (Western Port, sheltered, ~22 km), which on test day read 7 km/h while the coast forecast said 18-28 km/h | Blend in the coast forecast winds (knots to km/h) for this beach, e.g. use the larger of the two; or find a better station; compare with real visits |
+| **Mushroom Reef tide rule** | Both daily lows count, ±1.5 h, no height limit (Flinders lows were 1.03 m and 0.40 m on test day) | Parks Victoria says only "low tide"; add `maxLowTideM` for Flinders if real visits show the 1 m low doesn't expose the platform; widen the window if 1.5 h is too tight |
+| **Mushroom Reef swell mapping** | Sea points use the same table as the bay (0.2 m = 25 … 1.5 m = 0), so a 1 m swell scores 5/25 | Swell at a reef may need its own table; Parks Victoria says it is best "when there is no swell running" |
+| Mushroom Reef bearing/position | 180 (from "extends offshore to the south"), position approximate | Check on a chart |
 | Wind stations | St Kilda Harbour (northern 7), Point Cook (Jawbone), Fawkner Beacon (Half Moon Bay, Ricketts Point) | Compare with what it is actually like at the beach; Frankston Beach is an alternative for the southern two |
 | Beach bearings and coordinates | Estimated from coastline shape | Check against maps/lifesavers; Jawbone especially |
 | Warnings parser | Filter written from assumed titles | Verify when BOM issues a real warning |
@@ -321,3 +340,4 @@ The owner wants to tune these using real-world experience ("it said X but it was
 | No tide offset for Black Rock/Beaumaris | BOM's offsets file is empty; don't invent one |
 | Leave scoring thresholds alone; low-tide beaches count lows ≤ 0.5 m (both lows) | Owner decision 2026-11-10: gather human experience first (§12). Phase 2 then made "Great" reachable on calm offshore days; flagged to the owner |
 | Lift the low-tide rule for Half Moon Bay; add sourced "Good to know" tips | Owner decision 2026-11-10 after checking sources: no tide guidance for Half Moon Bay; Ricketts Point guidance supports the rule. Tips verified against the source pages |
+| Add Mushroom Reef with its own data (Flinders Jetty tides, coast forecast incl. swell) rather than reusing Port Phillip data | Owner chose "properly" 2026-11-10: Port Phillip tide times would be ~3.5 h wrong and the bay forecast has no swell |

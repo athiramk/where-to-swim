@@ -154,6 +154,79 @@ describe("Phase 3: daylight low-tide windows", () => {
   });
 });
 
+describe("Open-coast beach (Mushroom Reef): own tide site, own forecast, swell", () => {
+  const mushroom: Beach = {
+    ...sanctuary, id: "mr", name: "Mushroom Reef", faces: 180, lat: -38.49, lon: 144.998,
+    maxLowTideM: undefined, tideSite: "VIC_TP020", forecast: "coast",
+  };
+  const coastData: Data = {
+    ...data,
+    coast: {
+      area: "Central Coast", winds: "East to southeasterly 10 to 15 knots.", seas: "Below 1 metre.",
+      swell1: "Southwesterly around 1 metre, increasing to 1 to 2 metres in the west.", swell2: null, weather: "Partly cloudy.", issuedAt: "2026-11-09T23:00:00Z",
+    },
+    tides: {
+      // Williamstown: low at 11:38 am on 11 Nov. Flinders: low at 7:15 am that day (about 3.5 h earlier, and deeper/higher range).
+      VIC_TP003: { site: "Williamstown", events: [
+        { type: "high", time: "2026-11-10T14:00:00Z", height: 0.9 },
+        { type: "low", time: "2026-11-11T00:38:00Z", height: 0.5 },
+        { type: "high", time: "2026-11-11T05:30:00Z", height: 0.9 },
+      ] },
+      VIC_TP020: { site: "Flinders Jetty", events: [
+        { type: "high", time: "2026-11-10T13:14:00Z", height: 2.1 },
+        { type: "low", time: "2026-11-10T20:15:00Z", height: 1.03 }, // 7:15 am 11 Nov
+        { type: "high", time: "2026-11-11T02:15:00Z", height: 2.61 },
+      ] },
+    },
+  };
+  const sevenAm = t("2026-11-10T20:00:00Z"); // 7:00 am 11 Nov, daylight
+
+  it("sea height is the larger of the coast seas and the FIRST swell clause (not the regional '1 to 2 m in the west')", () => {
+    const c = conditionsFor(mushroom, coastData, sevenAm);
+    expect(c.seaHeightM).toBe(1); // seas 0.6 m, swell 1 m
+    // The number uses only the first swell clause, but the card shows BOM's full wording so nothing is hidden.
+    expect(c.seaNote).toBe("Coast forecast: seas Below 1 metre; swell Southwesterly around 1 metre, increasing to 1 to 2 metres in the west");
+  });
+
+  it("an ordinary Port Phillip beach still uses the bay forecast, not the coast swell", () => {
+    const c = conditionsFor(ordinary, coastData, sevenAm);
+    expect(c.seaHeightM!).toBeLessThan(0.5);
+  });
+
+  it("uses Flinders' tide times: in the low-tide window at 7:00 am when Williamstown's low is 4+ hours away", () => {
+    expect(conditionsFor(mushroom, coastData, sevenAm).lowTide).toMatchObject({ inWindow: true });
+    const williamstownBeach: Beach = { ...sanctuary, maxLowTideM: 0.5 }; // default Williamstown site; its 0.5 m low counts
+    expect(conditionsFor(williamstownBeach, coastData, sevenAm).lowTide).toMatchObject({ inWindow: false });
+  });
+
+  it("does not silently use Williamstown's tides when the beach's own tide site is missing", () => {
+    const noFlinders: Data = { ...coastData, tides: { VIC_TP003: coastData.tides!.VIC_TP003 } };
+    const c = conditionsFor(mushroom, noFlinders, sevenAm);
+    expect(c.lowTide).toBeNull();
+    expect(scoreBeach(mushroom.faces, c).unknown).toContain("tide");
+  });
+
+  it("a per-beach window overrides the default 1.5 h", () => {
+    const at = t("2026-11-10T22:45:00Z"); // 2.5 h after the Flinders low
+    expect(conditionsFor(mushroom, coastData, at).lowTide).toMatchObject({ inWindow: false });
+    expect(conditionsFor({ ...mushroom, lowTideWindowHours: 3 }, coastData, at).lowTide).toMatchObject({ inWindow: true });
+  });
+
+  it("thunderstorms in the COAST forecast cap this beach but not a bay beach", () => {
+    const stormy: Data = { ...coastData, coast: { ...coastData.coast!, weather: "The chance of a thunderstorm." } };
+    expect(conditionsFor(mushroom, stormy, sevenAm).storm).toBe(true);
+    expect(conditionsFor(ordinary, stormy, sevenAm).storm).toBe(false);
+  });
+
+  it("a big swell makes the sea points small (so 'good tide' alone doesn't make it Good)", () => {
+    const bigSwell: Data = { ...coastData, coast: { ...coastData.coast!, seas: "2 metres.", swell1: "Southwesterly 3 metres." } };
+    const calm = scoreBeach(mushroom.faces, conditionsFor(mushroom, coastData, sevenAm));
+    const rough = scoreBeach(mushroom.faces, conditionsFor(mushroom, bigSwell, sevenAm));
+    expect(rough.points.sea).toBe(0);
+    expect(rough.score).toBeLessThan(calm.score);
+  });
+});
+
 describe("conditionsFor + scoreBeach (end to end)", () => {
   it("an ordinary beach at 2pm in calm easterly weather is Great", () => {
     const r = scoreBeach(ordinary.faces, conditionsFor(ordinary, data, t("2026-11-10T03:00:00Z")));

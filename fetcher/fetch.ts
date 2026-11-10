@@ -13,7 +13,9 @@ const UA = "where-to-swim personal-use app";
 const BOM = "https://www.bom.gov.au";
 const PRIMARY_WIND_STATION = "95864"; // St Kilda Harbour RMYS: required, and the fallback when a beach's own station is down
 const WEATHER_STATION = "95936"; // Melbourne (Olympic Park) (air temp, rain)
-const TIDE_SITE = "VIC_TP003"; // Melbourne (Williamstown)
+const TIDE_SITE = "VIC_TP003"; // Melbourne (Williamstown): the default tide site for Port Phillip beaches
+// Names for the BOM tide sites we use (any beach can name its own `tideSite` in data/beaches.json).
+const TIDE_SITE_NAMES: Record<string, string> = { VIC_TP003: "Melbourne (Williamstown)", VIC_TP020: "Flinders Jetty" };
 
 async function get(url: string): Promise<string> {
   const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20_000) });
@@ -88,6 +90,22 @@ async function bayForecast() {
   return { winds: t.forecast_winds ?? null, seas: t.forecast_seas ?? null, weather: t.forecast_weather ?? null, issuedAt: doc.product.amoc["issue-time-utc"] as string };
 }
 
+// Open-coast (Bass Strait) marine forecast for "Central Coast: Cape Otway to Wilsons Promontory" (VIC_MW002).
+// Covers Flinders. Unlike the bay forecast it includes swell, which matters at exposed reefs such as Mushroom Reef.
+async function coastForecast() {
+  const doc = xml.parse(await get(`${BOM}/fwo/IDV10200.xml`));
+  const t = periodTexts(doc, "VIC_MW002");
+  return {
+    area: "Central Coast: Cape Otway to Wilsons Promontory",
+    winds: t.forecast_winds ?? null,
+    seas: t.forecast_seas ?? null,
+    swell1: t.forecast_swell1 ?? null,
+    swell2: t.forecast_swell2 ?? null,
+    weather: t.forecast_weather ?? null,
+    issuedAt: doc.product.amoc["issue-time-utc"] as string,
+  };
+}
+
 async function melbourneForecast() {
   const doc = xml.parse(await get(`${BOM}/fwo/IDV10450.xml`));
   const metro = periodTexts(doc, "VIC_ME001");
@@ -99,16 +117,16 @@ async function melbourneForecast() {
 
 // All highs/lows from yesterday to +2 days (Melbourne dates). The page works out "now" itself from these events,
 // so it can still tell whether it is low tide even if data.json is a little old.
-async function tides() {
+async function tides(aac: string) {
   const melbDate = (offsetDays: number) =>
     new Date(Date.now() + offsetDays * 86_400_000).toLocaleDateString("en-CA", { timeZone: "Australia/Melbourne" }); // YYYY-MM-DD
   const params = new URLSearchParams({
-    type: "tide", aac: TIDE_SITE, date: melbDate(-1), days: "4", region: "VIC", offset: "false", offsetName: "",
+    type: "tide", aac, date: melbDate(-1), days: "4", region: "VIC", offset: "false", offsetName: "",
     tz: "Australia/Melbourne", tz_js: "Australia/Melbourne",
   });
   const events = parseTideTable(await get(`${BOM}/australia/tides/scripts/getTidesTable.php?${params}`));
   if (events.length === 0) throw new Error("no tide events parsed");
-  return { site: "Melbourne (Williamstown)", events };
+  return { site: TIDE_SITE_NAMES[aac] ?? aac, events };
 }
 
 // Each source is independent: one failing should not blank the whole page.
@@ -125,13 +143,15 @@ async function safe<T>(label: string, fn: () => Promise<T>, errors: string[]): P
 async function main() {
   const errors: string[] = [];
   // Every wind station the beaches use (data/beaches.json), plus the primary and the temp/rain station.
-  const beaches = JSON.parse(await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../data/beaches.json"), "utf8")) as { windStation: string }[];
+  const beaches = JSON.parse(await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../data/beaches.json"), "utf8")) as { windStation: string; tideSite?: string }[];
+  const tideSites = [...new Set([TIDE_SITE, ...beaches.map((b) => b.tideSite).filter((x): x is string => !!x)])];
   const ids = [...new Set([PRIMARY_WIND_STATION, WEATHER_STATION, ...beaches.map((b) => b.windStation)])];
-  const [stationList, bay, melb, tide, warn] = await Promise.all([
+  const [stationList, bay, coast, melb, tideList, warn] = await Promise.all([
     Promise.all(ids.map((id) => safe(`obs ${id}`, () => observation(id), errors))),
     safe("bay forecast", bayForecast, errors),
+    safe("coast forecast", coastForecast, errors),
     safe("melbourne forecast", melbourneForecast, errors),
-    safe("tides", tides, errors),
+    Promise.all(tideSites.map((aac) => safe(`tides ${aac}`, () => tides(aac), errors))),
     safe("warnings", warnings, errors),
   ]);
 
@@ -140,8 +160,10 @@ async function main() {
     stations: Object.fromEntries(ids.map((id, i) => [id, stationList[i]])),
     weatherStation: WEATHER_STATION,
     bay,
+    coast, // Bass Strait coast marine forecast (seas + swell), used by open-coast beaches
     melbourne: melb,
-    tide,
+    tide: tideList[tideSites.indexOf(TIDE_SITE)], // default site (Williamstown); kept for older page versions
+    tides: Object.fromEntries(tideSites.map((aac, i) => [aac, tideList[i]])), // one entry per tide site used by a beach
     warnings: warn, // null = feed unreadable; [] = none active (BOM Victoria warnings RSS, IDZ00059)
     waterQuality: null, // EPA Beach Report not wired up yet (needs API key)
     errors,

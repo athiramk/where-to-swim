@@ -24,6 +24,22 @@ describe("data/beaches.json", () => {
     expect(byId("half-moon-bay").maxLowTideM).toBeUndefined();
   });
 
+  it("Mushroom Reef uses its own tide site, the open-coast forecast and a verified south-facing bearing", () => {
+    const m = byId("mushroom-reef");
+    expect(m.needsLowTide).toBe(true);
+    expect(m.tideSite).toBe("VIC_TP020"); // Flinders Jetty
+    expect(m.forecast).toBe("coast");
+    expect(m.faces).toBe(180);
+    expect(m.fetchKm).toBeUndefined(); // open coast: swell from the forecast, not the bay chop model
+  });
+
+  it("tide sites look like BOM AACs and forecast areas are known", () => {
+    for (const b of beaches) {
+      if (b.tideSite) expect(b.tideSite).toMatch(/^VIC_TP\d{3}$/);
+      if (b.forecast) expect(["bay", "coast"]).toContain(b.forecast);
+    }
+  });
+
   it("every tip has text, a named source and an https link, and tipped beaches say when they were checked", () => {
     for (const b of beaches) {
       for (const t of b.tips ?? []) {
@@ -35,7 +51,7 @@ describe("data/beaches.json", () => {
     }
   });
 
-  it("the three researched beaches have tips", () => {
-    for (const id of ["jawbone", "half-moon-bay", "ricketts-point"]) expect(byId(id).tips!.length).toBeGreaterThanOrEqual(3);
+  it("the researched beaches have tips", () => {
+    for (const id of ["jawbone", "half-moon-bay", "ricketts-point", "mushroom-reef"]) expect(byId(id).tips!.length).toBeGreaterThanOrEqual(3);
   });
 });

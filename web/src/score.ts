@@ -85,6 +85,15 @@ export function parseSeaHeight(text: string | null | undefined): number | null {
   return (low + Math.max(...nums)) / 2;
 }
 
+/**
+ * Swell height from BOM swell text, using only the FIRST clause. Swell text often continues with a regional change
+ * ("Southwesterly around 1 metre, increasing to 1 to 2 metres in the west"); the first clause is the area-wide value.
+ */
+export function parseSwellHeight(text: string | null | undefined): number | null {
+  if (!text) return null;
+  return parseSeaHeight(text.split(/[,.]/)[0]);
+}
+
 export function labelFor(score: number): Label {
   for (const [min, label] of CONFIG.labels) if (score >= min) return label;
   return "Poor";

@@ -179,5 +179,51 @@
         "url": "https://www.parks.vic.gov.au/things-to-do/scuba-diving/where-to-snorkel-close-to-melbourne"
       }
     ]
+  },
+  {
+    "id": "mushroom-reef",
+    "name": "Mushroom Reef Marine Sanctuary",
+    "faces": 180,
+    "lat": -38.49,
+    "lon": 144.998,
+    "windStation": "94898",
+    "epaSite": null,
+    "needsLowTide": true,
+    "tideSite": "VIC_TP020",
+    "forecast": "coast",
+    "note": "Flinders, open Bass Strait coast (about 80 km from South Melbourne). Own tide site (Flinders Jetty) and the Bass Strait coast marine forecast (seas + swell). Faces south (the sanctuary extends offshore to the south). Wind comes from Cerberus in Western Port (~22 km away, more sheltered than the reef).",
+    "tipsChecked": "2026-11-10",
+    "tips": [
+      {
+        "text": "At low tide the sea withdraws to expose a huge mushroom-shaped platform with rock pools. At high tide, breaking waves generally hide the offshore reefs.",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/things-to-do/scuba-diving/where-to-snorkel-close-to-melbourne"
+      },
+      {
+        "text": "Best for snorkelling and rock pooling when no swell is running (a Parks Victoria ranger's tip).",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/things-to-do/scuba-diving/where-to-snorkel-close-to-melbourne"
+      },
+      {
+        "text": "Unpatrolled. Parks Victoria lists rough surf, strong currents, submerged obstacles and slippery rocks as hazards.",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/places-to-see/sites/mushroom-reef-marine-sanctuary"
+      },
+      {
+        "text": "Parks Victoria notices (undated): a landslip is affecting the beach west of the reef, so don't approach it, and the beach toilet is permanently closed (the nearest are in Flinders town centre).",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/places-to-see/sites/flinders-ocean-beach"
+      },
+      {
+        "text": "No dogs. Fishing is prohibited, as is taking or damaging animals, plants and artefacts.",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/places-to-see/sites/mushroom-reef-marine-sanctuary"
+      },
+      {
+        "text": "Access is easy from the Flinders car park, with a short walk to the shoreline.",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/things-to-do/scuba-diving/where-to-snorkel-close-to-melbourne"
+      }
+    ]
   }
 ]
