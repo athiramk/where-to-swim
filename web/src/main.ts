@@ -23,6 +23,7 @@ type Beach = (typeof beaches)[number];
 const STALE_MIN = 60;
 const app = document.getElementById("app")!;
 const tz = "Australia/Melbourne";
+const EPA_BEACH_REPORT_URL = "https://www.epa.vic.gov.au/for-community/summer-water-quality/beach-report";
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", timeZone: tz });
 const ageMin = (iso: string) => (Date.now() - new Date(iso).getTime()) / 60_000;
 
@@ -88,6 +89,14 @@ function row(dl: HTMLElement, label: string, value: string | null, unknownNote =
   dl.append(el("dt", { text: label }), value ? el("dd", { text: value }) : el("dd", { class: "unknown", text: unknownNote }));
 }
 
+function epaLink(): HTMLAnchorElement {
+  const a = el("a", { class: "epa-link", text: "Check EPA Beach Report ↗" });
+  a.href = EPA_BEACH_REPORT_URL;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  return a;
+}
+
 function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HTMLElement {
   const wind = d.stations[beach.windStation];
   const btn = el("button", {}, el("span", { class: "rank", text: String(rank) }), el("span", { class: "name", text: beach.name }),
@@ -98,7 +107,8 @@ function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HT
   const dl = el("dl");
   row(dl, "Wind", c.windKmh != null ? `${wind?.windDirText ?? "?"} ${Math.round(c.windKmh)} km/h${c.gustKmh != null ? `, gusts ${Math.round(c.gustKmh)}` : ""}` : null);
   row(dl, "Sea (bay)", d.bay?.seas ?? null);
-  row(dl, "Water quality", c.waterQuality, "unknown (EPA feed not connected)");
+  if (c.waterQuality) row(dl, "Water quality", c.waterQuality);
+  else dl.append(el("dt", { text: "Water quality" }), el("dd", {}, epaLink()));
   row(dl, "Warnings", c.warnings.length ? c.warnings.join("; ") : "none known (BOM warnings not connected)");
   row(dl, "Air temp", c.airTempC != null ? `${c.airTempC}°C` : null);
   row(dl, "Rain since 9am", c.rainMm != null ? `${c.rainMm} mm` : null);
@@ -134,7 +144,11 @@ function render(d: Data) {
 
   out.push(el("div", { class: "section-title", text: "Best right now" }));
   ranked.forEach(({ b, c, r }, i) => out.push(card(b, r, c, d, i + 1)));
-  out.push(el("footer", { text: `${d.attribution} Scores are a guide — check flags and lifesavers. Water quality and warnings are not yet included.` }));
+  const note = el("footer", { text: `${d.attribution} Scores are a guide and don't include water quality or warnings — check the ` });
+  const link = epaLink();
+  link.textContent = "EPA Beach Report";
+  note.append(link, " and the flags and lifesavers before you swim.");
+  out.push(note);
   app.replaceChildren(...out);
 }
 

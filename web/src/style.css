@@ -73,5 +73,8 @@ dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; f
 dt { color: var(--muted); } dd { margin: 0; text-align: right; }
 .unknown { color: var(--muted); font-style: italic; }
 .points { color: var(--muted); font-size: 0.8rem; margin-top: 10px; }
+a { color: var(--accent); }
+.epa-link { display: inline-block; padding: 12px 0; text-decoration: underline; }
+footer .epa-link { padding: 0; }
 footer { color: var(--muted); font-size: 0.78rem; margin-top: 22px; }
 .loading, .error { color: var(--muted); padding: 40px 0; text-align: center; }
