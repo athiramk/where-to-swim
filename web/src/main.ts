@@ -1,0 +1,151 @@
+import "./style.css";
+import beaches from "../../data/beaches.json";
+import { parseSeaHeight, scoreBeach, type Conditions, type Result } from "./score.ts";
+
+interface Station {
+  name: string; observedAt: string; windDirText: string | null; windDirDeg: number | null;
+  windKmh: number | null; gustKmh: number | null; airTemp: number | null; rainSince9am: number | null;
+}
+interface Data {
+  fetchedAt: string;
+  stations: Record<string, Station | null>;
+  weatherStation: string;
+  bay: { winds: string | null; seas: string | null; weather: string | null; issuedAt: string } | null;
+  melbourne: { uvText: string | null; uvIndex: number | null; rainChancePct: number | null } | null;
+  tide: { site: string; nextHigh: { time: string; height: number }; nextLow: { time: string; height: number } } | null;
+  warnings: string[] | null;
+  waterQuality: Record<string, "Good" | "Fair" | "Poor"> | null;
+  errors: string[];
+  attribution: string;
+}
+type Beach = (typeof beaches)[number];
+
+const STALE_MIN = 60;
+const app = document.getElementById("app")!;
+const tz = "Australia/Melbourne";
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", timeZone: tz });
+const ageMin = (iso: string) => (Date.now() - new Date(iso).getTime()) / 60_000;
+
+/** Build a DOM element; text goes in via textContent so fetched strings can't inject markup. */
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: { class?: string; text?: string } = {}, ...kids: (Node | string)[]) {
+  const e = document.createElement(tag);
+  if (props.class) e.className = props.class;
+  if (props.text !== undefined) e.textContent = props.text;
+  for (const k of kids) e.append(k);
+  return e;
+}
+
+function conditionsFor(beach: Beach, d: Data): Conditions {
+  const wind = d.stations[beach.windStation];
+  const wx = d.stations[d.weatherStation];
+  return {
+    windFromDeg: wind?.windDirDeg ?? null,
+    windKmh: wind?.windKmh ?? null,
+    gustKmh: wind?.gustKmh ?? null,
+    seaHeightM: parseSeaHeight(d.bay?.seas),
+    waterQuality: d.waterQuality?.[beach.epaSite] ?? null,
+    warnings: d.warnings ?? [],
+    airTempC: wx?.airTemp ?? null,
+    rainMm: wx?.rainSince9am ?? null,
+  };
+}
+
+function compass(beach: Beach, windFromDeg: number | null): SVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "-50 -50 100 100");
+  svg.setAttribute("class", "compass");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", windFromDeg == null ? "Wind unknown" : `Wind from ${Math.round(windFromDeg)} degrees; beach faces ${beach.faces} degrees`);
+  const add = (name: string, attrs: Record<string, string>, text?: string) => {
+    const n = document.createElementNS(NS, name);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    if (text) n.textContent = text;
+    svg.append(n);
+    return n;
+  };
+  add("circle", { class: "ring", r: "38" });
+  // Sea wedge: the half-disc on the side the beach faces (towards the water).
+  const f = ((beach.faces - 90) * Math.PI) / 180;
+  const p = (a: number) => `${(38 * Math.cos(a)).toFixed(1)},${(38 * Math.sin(a)).toFixed(1)}`;
+  add("path", { class: "sea", d: `M ${p(f - Math.PI / 2)} A 38 38 0 0 1 ${p(f + Math.PI / 2)} Z` });
+  add("text", { x: "0", y: "-41" }, "N");
+  if (windFromDeg != null) {
+    // Arrow points the way the wind blows (from -> to).
+    add("g", { transform: `rotate(${(windFromDeg + 180) % 360})` });
+    const g = svg.lastChild as SVGElement;
+    const line = document.createElementNS(NS, "line");
+    for (const [k, v] of Object.entries({ x1: "0", y1: "26", x2: "0", y2: "-18", class: "arrow" })) line.setAttribute(k, v);
+    const head = document.createElementNS(NS, "polygon");
+    head.setAttribute("points", "0,-30 -7,-16 7,-16");
+    head.setAttribute("class", "arrow");
+    g.append(line, head);
+  }
+  return svg;
+}
+
+function row(dl: HTMLElement, label: string, value: string | null, unknownNote = "not available") {
+  dl.append(el("dt", { text: label }), value ? el("dd", { text: value }) : el("dd", { class: "unknown", text: unknownNote }));
+}
+
+function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HTMLElement {
+  const wind = d.stations[beach.windStation];
+  const btn = el("button", {}, el("span", { class: "rank", text: String(rank) }), el("span", { class: "name", text: beach.name }),
+    el("span", { class: "badge" }, el("div", { class: "label", text: r.label }), el("div", { class: "num", text: `${r.score}/100` })),
+    el("span", { class: "reason", text: r.reason || "Limited data" }));
+  btn.setAttribute("aria-expanded", "false");
+
+  const dl = el("dl");
+  row(dl, "Wind", c.windKmh != null ? `${wind?.windDirText ?? "?"} ${Math.round(c.windKmh)} km/h${c.gustKmh != null ? `, gusts ${Math.round(c.gustKmh)}` : ""}` : null);
+  row(dl, "Sea (bay)", d.bay?.seas ?? null);
+  row(dl, "Water quality", c.waterQuality, "unknown (EPA feed not connected)");
+  row(dl, "Warnings", c.warnings.length ? c.warnings.join("; ") : "none known (BOM warnings not connected)");
+  row(dl, "Air temp", c.airTempC != null ? `${c.airTempC}°C` : null);
+  row(dl, "Rain since 9am", c.rainMm != null ? `${c.rainMm} mm` : null);
+  const detail = el("div", { class: "detail" },
+    el("div", { class: "detail-top" }, compass(beach, c.windFromDeg), dl),
+    el("div", { class: "points", text: `Points — wind ${r.points.wind}/40, sea ${r.points.sea}/25, water ${r.points.water}/25, comfort ${r.points.comfort}/10` +
+      (r.unknown.length ? ` · missing: ${r.unknown.join(", ")}` : "") }));
+  detail.hidden = true;
+  btn.addEventListener("click", () => {
+    detail.hidden = !detail.hidden;
+    btn.setAttribute("aria-expanded", String(!detail.hidden));
+  });
+  return el("article", { class: `card ${r.label}` }, btn, detail);
+}
+
+function render(d: Data) {
+  const ranked = beaches
+    .map((b) => { const c = conditionsFor(b, d); return { b, c, r: scoreBeach(b.faces, c) }; })
+    .sort((x, y) => y.r.score - x.r.score);
+
+  const oldest = Math.max(ageMin(d.fetchedAt), ...Object.values(d.stations).filter((s): s is Station => !!s).map((s) => ageMin(s.observedAt)));
+  const header = el("header", {}, el("h1", { text: "Where to swim" }),
+    el("p", { class: "asof", text: `Updated ${fmtTime(d.fetchedAt)} · observations ${fmtTime(Object.values(d.stations).find((s) => s)?.observedAt ?? d.fetchedAt)}` }));
+  const out: Node[] = [header];
+  if (oldest > STALE_MIN) out.push(el("div", { class: "banner", text: `Data is ${Math.round(oldest)} minutes old — conditions may have changed.` }));
+  if (d.errors.length) out.push(el("div", { class: "banner", text: `Some sources failed: ${d.errors.join("; ")}` }));
+
+  const bits: string[] = [];
+  if (d.tide) bits.push(`Tide: high ${d.tide.nextHigh.height} m ${fmtTime(d.tide.nextHigh.time)}, low ${d.tide.nextLow.height} m ${fmtTime(d.tide.nextLow.time)}`);
+  if (d.melbourne?.uvIndex != null) bits.push(`UV ${d.melbourne.uvIndex}`);
+  if (d.melbourne?.rainChancePct != null) bits.push(`Rain chance ${d.melbourne.rainChancePct}%`);
+  if (bits.length) out.push(el("div", { class: "summary" }, ...bits.map((t) => el("span", { text: t }))));
+
+  out.push(el("div", { class: "section-title", text: "Best right now" }));
+  ranked.forEach(({ b, c, r }, i) => out.push(card(b, r, c, d, i + 1)));
+  out.push(el("footer", { text: `${d.attribution} Scores are a guide — check flags and lifesavers. Water quality and warnings are not yet included.` }));
+  app.replaceChildren(...out);
+}
+
+async function load() {
+  try {
+    const res = await fetch(`data.json?t=${Date.now()}`);
+    if (!res.ok) throw new Error(String(res.status));
+    render((await res.json()) as Data);
+  } catch (e) {
+    app.replaceChildren(el("p", { class: "error", text: `Couldn't load conditions (${(e as Error).message}). Run "npm run fetch" to create data.json.` }));
+  }
+}
+load();
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(); });

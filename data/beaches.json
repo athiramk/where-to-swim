@@ -1,0 +1,9 @@
+[
+  { "id": "sandridge", "name": "Sandridge", "faces": 280, "lat": -37.8345, "lon": 144.9395, "windStation": "95864", "epaSite": "Sandridge" },
+  { "id": "port-melbourne", "name": "Port Melbourne", "faces": 275, "lat": -37.8400, "lon": 144.9410, "windStation": "95864", "epaSite": "Port Melbourne" },
+  { "id": "south-melbourne", "name": "South Melbourne", "faces": 265, "lat": -37.8480, "lon": 144.9420, "windStation": "95864", "epaSite": "South Melbourne" },
+  { "id": "middle-park", "name": "Middle Park", "faces": 260, "lat": -37.8570, "lon": 144.9540, "windStation": "95864", "epaSite": "Middle Park" },
+  { "id": "albert-park", "name": "Albert Park", "faces": 255, "lat": -37.8630, "lon": 144.9600, "windStation": "95864", "epaSite": "Albert Park" },
+  { "id": "st-kilda", "name": "St Kilda", "faces": 255, "lat": -37.8680, "lon": 144.9740, "windStation": "95864", "epaSite": "St Kilda" },
+  { "id": "elwood", "name": "Elwood", "faces": 250, "lat": -37.8820, "lon": 144.9840, "windStation": "95864", "epaSite": "Elwood" }
+]

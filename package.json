@@ -1,0 +1,22 @@
+{
+  "name": "where-to-swim",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Personal app: which South Melbourne beach is best for a swim right now",
+  "scripts": {
+    "fetch": "node fetcher/fetch.ts",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "fast-xml-parser": "^4.5.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vitest": "^2.1.8"
+  }
+}
