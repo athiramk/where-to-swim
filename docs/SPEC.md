@@ -17,7 +17,7 @@ It ranks seven Port Phillip Bay beaches by a 0–100 score built from Bureau of 
 |---|---|
 | BOM data fetcher | Done, live |
 | Scoring + 15 unit tests | Done |
-| UI (ranked cards, details, compass, dark mode, stale banner) | Done; **layout never visually verified by an agent: do a phone check** |
+| UI (ranked cards, details, compass, dark mode, stale banner) | Done. Checked 2026-11-10 with headless-Chrome screenshots at a true 390 px width, light and dark (see §10); **not yet checked on a real phone** |
 | CI/CD (fetch + build + deploy every 30 min, GitHub Pages) | Done. Refresh is driven by an outside timer (cron-job.org) because GitHub's own schedule never fired; **token renewal needed every 90 days** (§9) |
 | Water quality (EPA) | **Not available.** EPA has no live Beach Report API. UI links to EPA's Beach Report instead. Score treats it as unknown. |
 | BOM warnings (strong wind / thunderstorm) | Wired (Victorian warnings RSS `IDZ00059.warnings_vic.xml`). **Item titles unverified**: the feed was empty when built, so the relevance filter is based on assumed wording. |
@@ -209,6 +209,7 @@ Worked examples (also tests): calm east 9 km/h, 0.2 m, Good water, 24 °C → 98
 - **Banners:** stale (data > 60 min old) and source-failure messages.
 - **Summary line:** next tide high/low with heights, UV index, rain chance.
 - **Cards**, ranked by score descending (the expanded card also has a **"Good to know"** section for beaches that have `tips`; see below): rank number, beach name, label (colour + word, never colour alone) and `score/100`, one-line reason (first cap reason, then "Offshore/Onshore/Side-on wind N km/h"), left border coloured by label.
+- **"This opens" cues:** a chevron on the right of every card (flips up when open; transition only when `prefers-reduced-motion` allows), a light hover/press highlight on the card button, and a one-line hint above the list: "Tap a beach for wind, sea, tide and local tips.".
 - **Tap a card** to expand (`aria-expanded`): wind compass SVG (shaded half-disc = sea side, arrow = direction the wind blows), then rows for Wind, Sea (estimated chop plus the bay forecast), Water quality (link to EPA), Warnings, Daylight, Tide (low-tide beaches), Air temp, Rain (24 h / 72 h), and a points breakdown with missing inputs.
 - **Footer:** attribution, "scores don't include water quality or warnings", EPA Beach Report link.
 - **Theme:** CSS custom properties, `prefers-color-scheme: dark` handled automatically. Score colours: green/lime/amber/red with dark-mode variants.
@@ -268,6 +269,8 @@ The timer sends one authenticated request per run. Test run returned HTTP 204 an
 - Time zone: all times in `data.json` are UTC ISO; the UI formats to Australia/Melbourne.
 - The tides endpoint is undocumented and may break; the fetcher degrades gracefully (`tide: null`, and low-tide beaches show tide as unknown).
 - Vitest also runs `fetcher/**/*.test.ts` (see `vite.config.ts`).
+- **Visual QA without a phone** (done 2026-11-10): build (`npm run fetch && npm run build`), serve `dist/` under `/where-to-swim/`, and screenshot with `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --screenshot=out.png --window-size=... URL`. **Headless Chrome will not lay a page out narrower than ~500 px** (it crops the picture instead, making the right side look cut off), so to see a true phone layout put the page in an `<iframe width="390">` inside a wrapper HTML served from the same origin; a small script in the wrapper can click cards to see them expanded. `--blink-settings=preferredColorScheme=1` did NOT switch to dark mode; to check dark mode, inject the app's own `@media (prefers-color-scheme: dark)` token values into the iframe. Only use these on your own built pages.
+- On phones (max-width 520 px) the compass sits above the details list so values don't wrap into narrow columns (found in that screenshot check).
 - If you change caching behaviour in `web/public/sw.js`, bump `CACHE` (`where-to-swim-v1`). Users' installed copies keep the old worker until it updates.
 - Data refreshes because of the **cron-job.org timer + GitHub token** (§9), not because of GitHub's own schedule. If the live data goes stale, check first: (1) Actions tab for recent `workflow_dispatch` runs, (2) whether the 90-day token has expired, (3) cron-job.org's job history.
 - Never log or commit secrets. Do not put personal details (name, email, domain) in this public repo.

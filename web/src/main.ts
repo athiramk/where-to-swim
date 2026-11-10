@@ -68,6 +68,13 @@ function epaLink(): HTMLAnchorElement {
   return a;
 }
 
+/** Small down-arrow on the right of each card; CSS flips it when the card is open (it is decoration, so hidden from screen readers). */
+function chevron(): HTMLElement {
+  const c = el("span", { class: "chev" });
+  c.setAttribute("aria-hidden", "true");
+  return c;
+}
+
 /** "Good to know": tips from published sources (with links), shown inside the expanded card. */
 function tipsSection(beach: Beach): HTMLElement | null {
   if (!beach.tips?.length) return null;
@@ -92,7 +99,7 @@ function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HT
   const wind = d.stations[beach.windStation];
   const btn = el("button", {}, el("span", { class: "rank", text: String(rank) }), el("span", { class: "name", text: beach.name }),
     el("span", { class: "badge" }, el("div", { class: "label", text: r.label }), el("div", { class: "num", text: `${r.score}/100` })),
-    el("span", { class: "reason", text: r.reason || "Limited data" }));
+    el("span", { class: "reason", text: r.reason || "Limited data" }), chevron());
   btn.setAttribute("aria-expanded", "false");
 
   const dl = el("dl");
@@ -216,6 +223,7 @@ function render(d: Data) {
   if (bits.length) out.push(el("div", { class: "summary" }, ...bits.map((t) => el("span", { text: t }))));
 
   out.push(el("div", { class: "section-title", text: "Best right now" }));
+  out.push(el("p", { class: "hint", text: "Tap a beach for wind, sea, tide and local tips." }));
   ranked.forEach(({ b, c, r }, i) => out.push(card(b, r, c, d, i + 1)));
   const note = el("footer", { text: `${d.attribution} Scores are a guide and don't include water quality — check the ` });
   const link = epaLink();
