@@ -68,6 +68,26 @@ function epaLink(): HTMLAnchorElement {
   return a;
 }
 
+/** "Good to know": tips from published sources (with links), shown inside the expanded card. */
+function tipsSection(beach: Beach): HTMLElement | null {
+  if (!beach.tips?.length) return null;
+  const list = el("ul");
+  for (const t of beach.tips) {
+    const a = el("a", { class: "tip-source", text: `${t.source} ↗` });
+    a.href = t.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    list.append(el("li", {}, t.text + " ", a));
+  }
+  const checked = beach.tipsChecked
+    ? ` (checked ${new Date(beach.tipsChecked + "T00:00:00Z").toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })})`
+    : "";
+  return el("div", { class: "tips" },
+    el("div", { class: "tips-title", text: "Good to know" }),
+    list,
+    el("div", { class: "tips-note", text: `From official and local-guide pages${checked}, not live conditions. Rules and closures can change.` }));
+}
+
 function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HTMLElement {
   const wind = d.stations[beach.windStation];
   const btn = el("button", {}, el("span", { class: "rank", text: String(rank) }), el("span", { class: "name", text: beach.name }),
@@ -91,6 +111,8 @@ function card(beach: Beach, r: Result, c: Conditions, d: Data, rank: number): HT
     el("div", { class: "detail-top" }, compass(beach, c.windFromDeg), dl),
     el("div", { class: "points", text: `Points — wind ${r.points.wind}/40, sea ${r.points.sea}/25, water ${r.points.water}/25, comfort ${r.points.comfort}/10` +
       (r.unknown.length ? ` · missing: ${r.unknown.join(", ")}` : "") }));
+  const tips = tipsSection(beach);
+  if (tips) detail.append(tips);
   detail.hidden = true;
   btn.addEventListener("click", () => {
     detail.hidden = !detail.hidden;

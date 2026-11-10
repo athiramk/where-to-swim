@@ -84,3 +84,10 @@ footer { color: var(--muted); font-size: 0.78rem; margin-top: 22px; }
 .install-btn { font: inherit; font-weight: 600; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: var(--accent); color: var(--bg); cursor: pointer; }
 .install-btn.secondary { background: transparent; color: var(--muted); border: 1px solid var(--line); font-weight: 500; }
 .install-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.tips { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.tips-title { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.tips ul { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.tips li { margin: 6px 0; }
+.tip-source { white-space: nowrap; font-size: 0.82rem; }
+.tips-note { color: var(--muted); font-size: 0.78rem; margin-top: 8px; }

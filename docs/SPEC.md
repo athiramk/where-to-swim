@@ -18,7 +18,7 @@ It ranks seven Port Phillip Bay beaches by a 0–100 score built from Bureau of 
 | BOM data fetcher | Done, live |
 | Scoring + 15 unit tests | Done |
 | UI (ranked cards, details, compass, dark mode, stale banner) | Done; **layout never visually verified by an agent: do a phone check** |
-| CI/CD (fetch + build + deploy every 30 min, GitHub Pages) | Done, confirmed working |
+| CI/CD (fetch + build + deploy every 30 min, GitHub Pages) | Done. Refresh is driven by an outside timer (cron-job.org) because GitHub's own schedule never fired; **token renewal needed every 90 days** (§9) |
 | Water quality (EPA) | **Not available.** EPA has no live Beach Report API. UI links to EPA's Beach Report instead. Score treats it as unknown. |
 | BOM warnings (strong wind / thunderstorm) | Wired (Victorian warnings RSS `IDZ00059.warnings_vic.xml`). **Item titles unverified**: the feed was empty when built, so the relevance filter is based on assumed wording. |
 | Daylight rule, thunderstorm flag, per-beach low-tide height | Done (Phase 1) |
@@ -30,7 +30,7 @@ It ranks seven Port Phillip Bay beaches by a 0–100 score built from Bureau of 
 ## 3. Architecture
 
 ```
-GitHub Actions (cron 7,37 * * * * UTC, plus push to main, plus manual)
+GitHub Actions (triggered every 30 min by an outside timer, cron-job.org, via workflow_dispatch; also push to main, manual, and GitHub's own unreliable schedule: see §9)
   npm ci -> npm test -> npm run fetch -> npm run build -> deploy to GitHub Pages
       fetcher/fetch.ts  ->  web/public/data.json  ->  copied into dist/
 Browser loads index.html + data.json (relative URL), scores each beach client-side.
@@ -146,7 +146,7 @@ Failure policy: each source is fetched independently (`safe()` in `fetch.ts`); a
 
 ## 6. Beach config (`data/beaches.json`)
 
-Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the beach looks out over the water**), `lat`, `lon` (approximate, display only), `windStation` (BOM station id), `epaSite` (EPA's name for the beach, or `null` if EPA doesn't cover it; for future use), optional `fetchKm` (km of open water the wind can blow over straight out from the beach, a **map estimate** used for the local chop estimate), optional `needsLowTide: true`, optional `maxLowTideM` (only lows at or below this height, in metres, count as low), optional `note`.
+Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the beach looks out over the water**), `lat`, `lon` (approximate, display only), `windStation` (BOM station id), `epaSite` (EPA's name for the beach, or `null` if EPA doesn't cover it; for future use), optional `fetchKm` (km of open water the wind can blow over straight out from the beach, a **map estimate** used for the local chop estimate), optional `needsLowTide: true`, optional `maxLowTideM` (only lows at or below this height, in metres, count as low), optional `note`. Optional `tips` (list of `{text, source, url}`) and `tipsChecked` (YYYY-MM-DD): see "Good to know" below.
 
 | Beach | faces | fetchKm (est.) | Wind station | Low tide only |
 |---|---|---|---|---|
@@ -158,7 +158,7 @@ Each entry: `id`, `name`, `faces` (compass bearing, degrees, **the direction the
 | St Kilda | 255 | 20 | 95864 | |
 | Elwood | 250 | 24 | 95864 | |
 | Jawbone Marine Sanctuary (Williamstown, west shore) | 165 | 30 | 95941 | yes |
-| Half Moon Bay (Black Rock) | 250 | 30 | 95872 | yes |
+| Half Moon Bay (Black Rock) | 250 | 30 | 95872 | no (rule lifted 2026-11-10) |
 | Ricketts Point Marine Sanctuary (Beaumaris) | 255 | 35 | 95872 | yes |
 
 **Bearings and coordinates are estimates from coastline shape**, not surveyed. Jawbone is on the **west** shore and faces roughly south-east, so the usual "easterly = offshore" intuition does not apply there. **`fetchKm` values are rough map estimates and should be checked against a chart**; they only matter for onshore winds. To add a beach, add one JSON entry (candidates: Brighton, Altona). No code change needed. `needsLowTide` beaches were requested by the owner as "worth visiting only at low tide and in good weather" (Flinders was considered and dropped: it is on Western Port, outside this data).
@@ -191,7 +191,7 @@ All constants are in the exported `CONFIG`. Change numbers there and update test
    - Wind ≥ 25 km/h and `onshore < −0.5` (strong offshore: calm water but swimmers drift out) → 55
    - **Low-tide-only beaches** (`needsLowTide`) when it is not low tide → 35. "Low tide" = within `CONFIG.lowTideWindowHours` (1.5 h) of any predicted low (`web/src/tide.ts`, `lowTideState`). If the tide data doesn't cover "now" the state is unknown: no cap, and "tide" is listed as missing. The reason line then reads e.g. "needs low tide (next daylight low tomorrow 11:38 am, 0.5 m)". Other beaches ignore tide.
    - **Guidance text:** the verdict names the next low tide that falls in **daylight** (`nextDaylightLowWindow` in `web/src/conditions.ts`; night-time lows are skipped), and the card has a "Best time" row with the swim window (low ± `lowTideWindowHours`, clipped to daylight), e.g. "tomorrow 10:08 am–1:08 pm (low 0.5 m at 11:38 am)". The summary line shows the next daylight low-tide window. Times say "tomorrow" or a weekday when not today (`fmtWhen`). If the tide data (about yesterday to +2 days) holds no daylight low it says "no daylight low tide in the next 2 days".
-   - Williamstown has two lows a day (about 0.5 m and about 0.22 m). Beaches with `maxLowTideM` (currently **0.5 for the three sanctuaries, so both daily lows count**) only count lows at or below that height. If it is later set lower (e.g. 0.4), only the deep low counts, which often falls at night, so those beaches could go many days with no daylight qualifying low. Tune `maxLowTideM` per beach in `data/beaches.json`. **Revisit with real-world feedback** (see §12). Tide times are Williamstown's; no official offset is available.
+   - Williamstown has two lows a day (about 0.5 m and about 0.22 m). Beaches with `maxLowTideM` (currently **0.5 for Jawbone and Ricketts Point, so both daily lows count**) only count lows at or below that height. If it is later set lower (e.g. 0.4), only the deep low counts, which often falls at night, so those beaches could go many days with no daylight qualifying low. Tune `maxLowTideM` per beach in `data/beaches.json`. **Revisit with real-world feedback** (see §12). Tide times are Williamstown's; no official offset is available.
    - **Today's best case is ~85 in calm conditions**: with water quality unknown (15/25) and the bay-forecast floor keeping sea points at ~21/25, a score of 80 or more is possible but only on a very calm day, so Great is rare. The owner chose to **leave this as is for now** (see §12).
 
 5. **Labels:** 80–100 Great, 60–79 Good, 40–59 Fair, 0–39 Poor.
@@ -208,12 +208,19 @@ Worked examples (also tests): calm east 9 km/h, 0.2 m, Good water, 24 °C → 98
 - **Header:** "Where to swim", "Updated HH:MM · observations HH:MM" (Australia/Melbourne time).
 - **Banners:** stale (data > 60 min old) and source-failure messages.
 - **Summary line:** next tide high/low with heights, UV index, rain chance.
-- **Cards**, ranked by score descending: rank number, beach name, label (colour + word, never colour alone) and `score/100`, one-line reason (first cap reason, then "Offshore/Onshore/Side-on wind N km/h"), left border coloured by label.
+- **Cards**, ranked by score descending (the expanded card also has a **"Good to know"** section for beaches that have `tips`; see below): rank number, beach name, label (colour + word, never colour alone) and `score/100`, one-line reason (first cap reason, then "Offshore/Onshore/Side-on wind N km/h"), left border coloured by label.
 - **Tap a card** to expand (`aria-expanded`): wind compass SVG (shaded half-disc = sea side, arrow = direction the wind blows), then rows for Wind, Sea (estimated chop plus the bay forecast), Water quality (link to EPA), Warnings, Daylight, Tide (low-tide beaches), Air temp, Rain (24 h / 72 h), and a points breakdown with missing inputs.
 - **Footer:** attribution, "scores don't include water quality or warnings", EPA Beach Report link.
 - **Theme:** CSS custom properties, `prefers-color-scheme: dark` handled automatically. Score colours: green/lime/amber/red with dark-mode variants.
 - **Refresh:** `data.json` is fetched on load (with `?t=` cache-buster) and when the tab becomes visible again. No polling.
 - **Security:** all fetched text is inserted with `textContent` via the `el()` helper — never `innerHTML`. Keep it that way. External links use `rel="noopener noreferrer"`.
+
+### "Good to know" tips (per-beach, from published sources)
+Beaches can carry `tips` in `data/beaches.json`: short paraphrased facts, each with a `source` name and an `https` `url`, plus `tipsChecked` (the date they were verified against the pages). The expanded card shows them as a list with a "source ↗" link on each, and a note: "From official and local-guide pages (checked <date>), not live conditions. Rules and closures can change." Links use `rel="noopener noreferrer"` and all text is inserted with `textContent`.
+- Currently only the three sanctuary/Black Rock beaches have tips (Jawbone 5, Half Moon Bay 4, Ricketts Point 4). The seven Melbourne-side beaches have none yet; the card simply omits the section.
+- These are **not visitor reviews**: they come from Parks Victoria, Hobsons Bay Council and Melbourne Playgrounds pages. Each fact was verified against the actual page on 2026-11-10 (quotes checked, not search summaries). Do not add a tip you haven't confirmed on its source page.
+- **Not verified, so deliberately left out:** a claim seen in a search summary that Jawbone's beach is "narrow at low tide or non-existent at high tide" (no official page says it); BeachSafe's lifeguard status for Half Moon Bay (the page didn't load); and Half Moon Bay patrol hours/season (not published on the page used).
+- Tips go stale (closures, parking rules, prices). Re-check them when revisiting, and update `tipsChecked`. `web/src/beaches.test.ts` checks the shape (text, source, https link, checked date).
 
 ## 8b. Install to home screen (PWA)
 
@@ -228,11 +235,28 @@ Worked examples (also tests): calm east 9 km/h, 0.2 m, Good water, 24 °C → 98
 
 ## 9. CI/CD (`.github/workflows/deploy.yml`)
 
-- Triggers: schedule `7,37 * * * *` (UTC; GitHub often delays 5–15 min), push to `main`, manual `workflow_dispatch`.
+- Triggers: three, because the first one proved unreliable (see below).
+  1. **Outside timer (the one that works): cron-job.org → `workflow_dispatch`**, every 30 minutes at :20 and :50.
+  2. GitHub's own schedule `7,37 * * * *` (UTC). Kept as a free backup, but see "GitHub's schedule did not fire".
+  3. Push to `main`, and a manual "Run workflow" button in the Actions tab.
 - Steps: checkout → Node 24 with npm cache → `npm ci` → `npm test` → `npm run fetch` → `npm run build` → upload Pages artifact → `deploy-pages`.
-- Concurrency group `pages` with cancel-in-progress.
-- GitHub may pause scheduled workflows after 60 days without repo activity on a public repo. If data goes stale, check the Actions tab first.
-- Pages Source must be "GitHub Actions" in repo settings.
+- Concurrency group `pages` with cancel-in-progress, so overlapping triggers (e.g. the timer and GitHub's schedule) cancel the older run instead of clashing.
+- Pages Source must be "GitHub Actions" in repo settings. (The very first run failed with a 404 "Ensure GitHub Pages has been enabled" until this was switched on; that is a one-time setup error, not a bug.)
+
+### GitHub's schedule did not fire (2026-11-10)
+For about 3.3 hours after the repo went live, `schedule`-triggered runs never appeared (run history showed only `push` and `workflow_dispatch` events), although the workflow was active, `main` contained the `schedule` block, and the repo was public and enabled. Scheduled workflows are best-effort on GitHub (delayed or dropped under load, and new repos can wait a long time for the first run), so it is unreliable for a 30-minute refresh. It may start working later; if so, the two sources simply overlap harmlessly. Do not rely on it. Check "Actions → filter Event → schedule" to see whether it ever runs.
+
+### Outside timer setup (cron-job.org), verified working 2026-11-10
+The timer sends one authenticated request per run. Test run returned HTTP 204 and run #8 appeared as a `workflow_dispatch` that succeeded and updated the live data.
+- **Request:** `POST https://api.github.com/repos/<owner>/where-to-swim/actions/workflows/deploy.yml/dispatches`, JSON body `{"ref":"main"}`.
+- **Headers:** `Authorization: Bearer <token>`, `Accept: application/vnd.github+json`, `Content-Type: application/json`, `X-GitHub-Api-Version: 2022-11-28`.
+- **Schedule:** minutes 20 and 50 of every hour (offset from GitHub's own 7/37 slots).
+- **Token:** a GitHub **fine-grained personal access token**, resource owner = the repo owner, *Only select repositories* = `where-to-swim`, permission **Actions: Read and write** and nothing else (Metadata read-only is automatic). It can only start workflows on this one repo. It was created on 2026-11-10 with a **90-day expiry** (so it stops working around **2027-02-08**; confirm the exact date on the token's page in GitHub): **renew it before it expires** (create a new token with the same settings, update the `Authorization` header in the cron-job.org job). If it expires or is wrong, the timer gets 401/403 and the site silently stops updating; the page's "data is N minutes old" banner appears after 60 minutes.
+- **Troubleshooting a failed timer run:** 401 = token wrong/expired or missing the `Bearer ` prefix; 403/404 = token lacks Actions access on this repo or URL typo; 422 = body missing/wrong or the workflow has no `workflow_dispatch` trigger (keep that trigger in `deploy.yml`).
+- **Security:** the token lives on a third-party service (cron-job.org) under the owner's account. It must never be committed to this repo or pasted into chat or any file. If it leaks or is lost, delete it in GitHub (Settings → Developer settings → Fine-grained tokens) and make a new one.
+- **Keep `workflow_dispatch` in `deploy.yml`:** the timer depends on it.
+- Other ways to trigger runs if cron-job.org is ever abandoned: a Cloudflare Worker with a Cron Trigger calling the same endpoint (token stored as a Worker secret), or the manual "Run workflow" button.
+- GitHub may also pause scheduled workflows after 60 days without repo activity on a public repo; that affects only GitHub's own schedule, not the outside timer.
 
 ## 10. Gotchas for the next agent
 
@@ -245,6 +269,7 @@ Worked examples (also tests): calm east 9 km/h, 0.2 m, Good water, 24 °C → 98
 - The tides endpoint is undocumented and may break; the fetcher degrades gracefully (`tide: null`, and low-tide beaches show tide as unknown).
 - Vitest also runs `fetcher/**/*.test.ts` (see `vite.config.ts`).
 - If you change caching behaviour in `web/public/sw.js`, bump `CACHE` (`where-to-swim-v1`). Users' installed copies keep the old worker until it updates.
+- Data refreshes because of the **cron-job.org timer + GitHub token** (§9), not because of GitHub's own schedule. If the live data goes stale, check first: (1) Actions tab for recent `workflow_dispatch` runs, (2) whether the 90-day token has expired, (3) cron-job.org's job history.
 - Never log or commit secrets. Do not put personal details (name, email, domain) in this public repo.
 
 ## 11. Roadmap / open items (suggested order)
@@ -265,7 +290,8 @@ The owner wants to tune these using real-world experience ("it said X but it was
 | Open point | Current setting | Options when revisiting |
 |---|---|---|
 | **How easy is "Great"?** (owner decision 2026-11-10: leave the scoring as is) | Before Phase 2 Great was unreachable (best ~78). Phase 2 (local chop estimate, bay forecast only a floor) made it reachable: a calm offshore day scores ~87 at South Melbourne even with water quality unknown (15/25). Verified 2026-11-10 | Keep; or require known water quality for Great; or score only known components rescaled to 100 ("water quality not included"); or move the Great threshold from 80. Decide after real use. Note Great can now appear while water quality is unknown, so the EPA link matters |
-| **Which lows count for the sanctuaries** (decided 2026-11-10: both lows) | `maxLowTideM: 0.5` for Jawbone, Half Moon Bay, Ricketts Point | Tighten to 0.4 so only the deep low (about 0.22 m) counts; or set per beach from experience; or add tide offsets/heights per site |
+| **Which lows count for the low-tide beaches** (decided 2026-11-10: both lows) | `maxLowTideM: 0.5` for Jawbone and Ricketts Point | Tighten to 0.4 so only the deep low (about 0.22 m) counts; or set per beach from experience; or add tide offsets/heights per site |
+| **Low-tide rule per beach** (2026-11-10) | Ricketts Point: kept (Parks Victoria advises tide height 0.5 m or below for rock pools and low tide for snorkelling visibility). Half Moon Bay: **lifted** (an ordinary patrolled swimming beach; no source gives a tide rule). Jawbone: kept, but the evidence is weak: the council notes low tide exposes a sand bar with marine life, Parks Victoria gives no tide advice, and no source says high tide is bad | Confirm Jawbone with real visits; consider a "best at low tide, fine otherwise" soft preference instead of a hard cap of 35 |
 | Low-tide window | `lowTideWindowHours: 1.5` either side of a low | Widen/narrow per beach; some sanctuaries may be fine for longer |
 | Score thresholds and weights | Great 80 / Good 60 / Fair 40; wind 40, sea 25, water 25, comfort 10 | Re-weight from feedback |
 | Onshore wind factor | 0.4 (offshore ×0.6, onshore ×1.4) | Tune per beach exposure |
@@ -290,4 +316,5 @@ The owner wants to tune these using real-world experience ("it said X but it was
 | `textContent` only | Fetched strings can't inject markup |
 | Daylight cap 20, storm cap 55, wrong-tide cap 35 | Safety rules override a good-looking weather score |
 | No tide offset for Black Rock/Beaumaris | BOM's offsets file is empty; don't invent one |
-| Leave scoring thresholds alone; sanctuary lows ≤ 0.5 m (both lows) | Owner decision 2026-11-10: gather human experience first (§12). Phase 2 then made "Great" reachable on calm offshore days; flagged to the owner |
+| Leave scoring thresholds alone; low-tide beaches count lows ≤ 0.5 m (both lows) | Owner decision 2026-11-10: gather human experience first (§12). Phase 2 then made "Great" reachable on calm offshore days; flagged to the owner |
+| Lift the low-tide rule for Half Moon Bay; add sourced "Good to know" tips | Owner decision 2026-11-10 after checking sources: no tide guidance for Half Moon Bay; Ricketts Point guidance supports the rule. Tips verified against the source pages |

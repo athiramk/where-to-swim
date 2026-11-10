@@ -18,6 +18,17 @@ export interface Beach {
   /** For low-tide beaches: only lows at or below this height (m) count as "low". */
   maxLowTideM?: number;
   note?: string;
+  /** "Good to know" tips from published sources, shown on the card. */
+  tips?: Tip[];
+  /** Date (YYYY-MM-DD) the tips were checked against their sources. */
+  tipsChecked?: string;
+}
+
+export interface Tip {
+  text: string;
+  /** Who published it, e.g. "Parks Victoria". */
+  source: string;
+  url: string;
 }
 
 export interface Station {

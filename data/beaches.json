@@ -1,12 +1,183 @@
 [
-  {"id": "sandridge", "name": "Sandridge", "faces": 280, "lat": -37.8345, "lon": 144.9395, "windStation": "95864", "epaSite": "Sandridge", "fetchKm": 6},
-  {"id": "port-melbourne", "name": "Port Melbourne", "faces": 275, "lat": -37.84, "lon": 144.941, "windStation": "95864", "epaSite": "Port Melbourne", "fetchKm": 8},
-  {"id": "south-melbourne", "name": "South Melbourne", "faces": 265, "lat": -37.848, "lon": 144.942, "windStation": "95864", "epaSite": "South Melbourne", "fetchKm": 10},
-  {"id": "middle-park", "name": "Middle Park", "faces": 260, "lat": -37.857, "lon": 144.954, "windStation": "95864", "epaSite": "Middle Park", "fetchKm": 14},
-  {"id": "albert-park", "name": "Albert Park", "faces": 255, "lat": -37.863, "lon": 144.96, "windStation": "95864", "epaSite": "Albert Park", "fetchKm": 18},
-  {"id": "st-kilda", "name": "St Kilda", "faces": 255, "lat": -37.868, "lon": 144.974, "windStation": "95864", "epaSite": "St Kilda", "fetchKm": 20},
-  {"id": "elwood", "name": "Elwood", "faces": 250, "lat": -37.882, "lon": 144.984, "windStation": "95864", "epaSite": "Elwood", "fetchKm": 24},
-  {"id": "jawbone", "name": "Jawbone Marine Sanctuary", "faces": 165, "lat": -37.866, "lon": 144.867, "windStation": "95941", "epaSite": null, "needsLowTide": true, "note": "Williamstown, west shore: faces south-east, so winds from the S/SE are onshore", "maxLowTideM": 0.5, "fetchKm": 30},
-  {"id": "half-moon-bay", "name": "Half Moon Bay", "faces": 250, "lat": -37.978, "lon": 145.016, "windStation": "95872", "epaSite": "Half Moon Bay", "needsLowTide": true, "note": "Black Rock", "maxLowTideM": 0.5, "fetchKm": 30},
-  {"id": "ricketts-point", "name": "Ricketts Point Marine Sanctuary", "faces": 255, "lat": -37.993, "lon": 145.031, "windStation": "95872", "epaSite": "Ricketts Point", "needsLowTide": true, "note": "Beaumaris", "maxLowTideM": 0.5, "fetchKm": 35}
+  {
+    "id": "sandridge",
+    "name": "Sandridge",
+    "faces": 280,
+    "lat": -37.8345,
+    "lon": 144.9395,
+    "windStation": "95864",
+    "epaSite": "Sandridge",
+    "fetchKm": 6
+  },
+  {
+    "id": "port-melbourne",
+    "name": "Port Melbourne",
+    "faces": 275,
+    "lat": -37.84,
+    "lon": 144.941,
+    "windStation": "95864",
+    "epaSite": "Port Melbourne",
+    "fetchKm": 8
+  },
+  {
+    "id": "south-melbourne",
+    "name": "South Melbourne",
+    "faces": 265,
+    "lat": -37.848,
+    "lon": 144.942,
+    "windStation": "95864",
+    "epaSite": "South Melbourne",
+    "fetchKm": 10
+  },
+  {
+    "id": "middle-park",
+    "name": "Middle Park",
+    "faces": 260,
+    "lat": -37.857,
+    "lon": 144.954,
+    "windStation": "95864",
+    "epaSite": "Middle Park",
+    "fetchKm": 14
+  },
+  {
+    "id": "albert-park",
+    "name": "Albert Park",
+    "faces": 255,
+    "lat": -37.863,
+    "lon": 144.96,
+    "windStation": "95864",
+    "epaSite": "Albert Park",
+    "fetchKm": 18
+  },
+  {
+    "id": "st-kilda",
+    "name": "St Kilda",
+    "faces": 255,
+    "lat": -37.868,
+    "lon": 144.974,
+    "windStation": "95864",
+    "epaSite": "St Kilda",
+    "fetchKm": 20
+  },
+  {
+    "id": "elwood",
+    "name": "Elwood",
+    "faces": 250,
+    "lat": -37.882,
+    "lon": 144.984,
+    "windStation": "95864",
+    "epaSite": "Elwood",
+    "fetchKm": 24
+  },
+  {
+    "id": "jawbone",
+    "name": "Jawbone Marine Sanctuary",
+    "faces": 165,
+    "lat": -37.866,
+    "lon": 144.867,
+    "windStation": "95941",
+    "epaSite": null,
+    "needsLowTide": true,
+    "note": "Williamstown, west shore: faces south-east, so winds from the S/SE are onshore",
+    "maxLowTideM": 0.5,
+    "fetchKm": 30,
+    "tipsChecked": "2026-11-10",
+    "tips": [
+      {
+        "text": "The small bay is sheltered from prevailing winds, so the water is often gentle.",
+        "source": "Hobsons Bay Council",
+        "url": "https://www.hobsonsbay.vic.gov.au/visit/Experience/Outdoors-Nature/Jawbone-Flora-Fauna-Reserve"
+      },
+      {
+        "text": "At low tide a large sand bar is exposed, and you can see crabs, sea snails and small fish among the rocks.",
+        "source": "Hobsons Bay Council",
+        "url": "https://www.hobsonsbay.vic.gov.au/visit/Experience/Outdoors-Nature/Jawbone-Flora-Fauna-Reserve"
+      },
+      {
+        "text": "Check the weather before you go and avoid the sanctuary during storms. Snorkel with a buddy and stay within your skill level.",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/places-to-see/parks/jawbone-marine-sanctuary"
+      },
+      {
+        "text": "Early mornings or calm, still days give the best visibility.",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/things-to-do/scuba-diving/where-to-snorkel-close-to-melbourne"
+      },
+      {
+        "text": "Shore access to the small bay is at the eastern end of the reserve, off the Bay Trail. Fishing and taking any marine life is prohibited.",
+        "source": "Hobsons Bay Council",
+        "url": "https://www.hobsonsbay.vic.gov.au/visit/Experience/Outdoors-Nature/Jawbone-Flora-Fauna-Reserve"
+      }
+    ]
+  },
+  {
+    "id": "half-moon-bay",
+    "name": "Half Moon Bay",
+    "faces": 250,
+    "lat": -37.978,
+    "lon": 145.016,
+    "windStation": "95872",
+    "epaSite": "Half Moon Bay",
+    "note": "Black Rock. Ordinary swimming beach, patrolled at the southern end. Low-tide rule lifted 2026-11-10.",
+    "fetchKm": 30,
+    "tipsChecked": "2026-11-10",
+    "tips": [
+      {
+        "text": "Swim at the southern end, patrolled by the Half Moon Bay Surf Life Saving Club (patrol times aren't listed there, so check with the club). The northern end is rocky and best avoided.",
+        "source": "Melbourne Playgrounds",
+        "url": "https://www.melbourneplaygrounds.com.au/half-moon-bay-beach-black-rock"
+      },
+      {
+        "text": "Rips are stronger toward the north side, especially in high waves.",
+        "source": "Melbourne Playgrounds",
+        "url": "https://www.melbourneplaygrounds.com.au/half-moon-bay-beach-black-rock"
+      },
+      {
+        "text": "Water near the shore is shallow and good for young kids. Rated 3/10 on the general beach hazard scale (least hazardous).",
+        "source": "Melbourne Playgrounds",
+        "url": "https://www.melbourneplaygrounds.com.au/half-moon-bay-beach-black-rock"
+      },
+      {
+        "text": "Toilets are next to the Life Saving Club. Ticketed parking runs 8am to 8pm at the ends of Cerberus Way.",
+        "source": "Melbourne Playgrounds",
+        "url": "https://www.melbourneplaygrounds.com.au/half-moon-bay-beach-black-rock"
+      }
+    ]
+  },
+  {
+    "id": "ricketts-point",
+    "name": "Ricketts Point Marine Sanctuary",
+    "faces": 255,
+    "lat": -37.993,
+    "lon": 145.031,
+    "windStation": "95872",
+    "epaSite": "Ricketts Point",
+    "needsLowTide": true,
+    "note": "Beaumaris",
+    "maxLowTideM": 0.5,
+    "fetchKm": 35,
+    "tipsChecked": "2026-11-10",
+    "tips": [
+      {
+        "text": "For rock pooling, aim for a tide height of 0.5 m or below so the pools are exposed (a Parks Victoria staff post, 2023).",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/news/2023/01/10/22/35/5-tips-for-a-perfect-rock-pooling-experience-at-ricketts-point-marine-sanctuary"
+      },
+      {
+        "text": "Low tide and calm conditions give the best snorkelling visibility.",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/things-to-do/scuba-diving/where-to-snorkel-close-to-melbourne"
+      },
+      {
+        "text": "Wear sturdy footwear (rocks are slippery and sharp), look but don't touch, and take nothing. Dogs aren't allowed in marine sanctuaries.",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/news/2023/01/10/22/35/5-tips-for-a-perfect-rock-pooling-experience-at-ricketts-point-marine-sanctuary"
+      },
+      {
+        "text": "Entry is easy from the beach at the Ricketts Point foreshore.",
+        "source": "Parks Victoria",
+        "url": "https://www.parks.vic.gov.au/things-to-do/scuba-diving/where-to-snorkel-close-to-melbourne"
+      }
+    ]
+  }
 ]
